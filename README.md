@@ -9,7 +9,7 @@ A full-stack, real-time workspace where developers and an AI pair programmer bui
 
 ## Features
 
-- **AI pair programmer.** Replies come from the Anthropic Claude API, streamed token by token over WebSockets and rendered as Markdown with highlighted code. Without an API key, a built-in offline assistant takes over, so the app always works.
+- **AI pair programmer.** Replies stream token by token over WebSockets and render as Markdown with highlighted code. There are three providers, chosen automatically: the **Claude API** (when a key is set), a **free local model through Ollama**, or a built-in **offline assistant**. The app always works and can run entirely for free.
 - **Real-time collaboration.** One WebSocket room per workspace, with live messages, presence avatars, typing indicators and automatic reconnect.
 - **Accounts and workspaces.** Sign up and log in with JWT tokens and PBKDF2-hashed passwords. Anyone can create a shared workspace, and only its owner can clear the history.
 - **Persistent storage.** Users, workspaces and messages are stored in SQLite through SQLModel.
@@ -23,8 +23,8 @@ A full-stack, real-time workspace where developers and an AI pair programmer bui
 │  React SPA   │ ────────────▶ │     FastAPI      │ ───────────▶ │  SQLite  │
 │  Vite :5173  │ ◀──────────── │  Uvicorn :8000   │              └──────────┘
 │              │   WebSocket   │                  │   streaming  ┌──────────┐
-│              │ ◀───────────▶ │ rooms + presence │ ───────────▶ │  Claude  │
-└──────────────┘               └──────────────────┘              │   API    │
+│              │ ◀───────────▶ │ rooms + presence │ ───────────▶ │ Claude / │
+└──────────────┘               └──────────────────┘              │  Ollama  │
                                                                  └──────────┘
 ```
 
@@ -32,7 +32,7 @@ When someone sends a message in a workspace:
 
 1. The browser sends `{"type": "message"}` over the workspace WebSocket.
 2. The server saves it and broadcasts it to everyone in the room.
-3. If "Ask AI" is on, the server loads the recent history and streams Claude's reply as `ai_delta` events.
+3. If "Ask AI" is on, the server loads the recent history and streams the AI's reply as `ai_delta` events.
 4. The finished reply is saved and broadcast as `ai_done`, along with its response time.
 
 ## Tech stack
@@ -41,7 +41,7 @@ When someone sends a message in a workspace:
 |---|---|
 | Frontend | React 18, Vite 6, react-markdown, highlight.js, Vitest |
 | Backend | Python, FastAPI, SQLModel/SQLAlchemy, SQLite, PyJWT, WebSockets |
-| AI | Anthropic Python SDK (Claude, streaming, refusal fallbacks) |
+| AI | Anthropic Python SDK (Claude), Ollama (free local models), offline fallback |
 | DevOps | Docker, Docker Compose, nginx, GitHub Actions |
 
 ## Getting started
@@ -75,6 +75,19 @@ npm run dev
 
 Open http://localhost:5173, create an account, and start chatting. To try the real-time features, open a second browser window and sign up as another user.
 
+### 3. Free AI with Ollama (optional)
+
+Real AI replies with no API key and no cost. The model runs on your own computer.
+
+1. Install Ollama from https://ollama.com/download.
+2. Download a small coding model (about 1 GB):
+   ```bash
+   ollama pull qwen2.5-coder:1.5b
+   ```
+3. Keep Ollama running. The backend detects it within about 15 seconds, and the dashboard badge shows `qwen2.5-coder:1.5b · local`.
+
+On a machine with 16 GB+ RAM or a GPU, a larger model gives better answers, for example `OLLAMA_MODEL=qwen2.5-coder:7b` in `backend/.env`.
+
 ### Run with Docker
 
 ```bash
@@ -90,7 +103,10 @@ Set these in `backend/.env` (see [`backend/.env.example`](backend/.env.example))
 | Variable | Default | Purpose |
 |---|---|---|
 | `SECRET_KEY` | random per start | Signs login tokens. **Set it in production**, otherwise everyone is logged out on restart. |
-| `ANTHROPIC_API_KEY` | none | Turns on Claude replies. Without it, the offline assistant is used. |
+| `ANTHROPIC_API_KEY` | none | Turns on Claude replies (paid). Takes priority over Ollama. |
+| `OLLAMA_MODEL` | `qwen2.5-coder:1.5b` | Local model used when Ollama is running |
+| `OLLAMA_URL` | `http://localhost:11434` | Address of the Ollama server |
+| `AI_ENABLED` | `true` | Set to `false` to always use the offline assistant |
 | `AI_MODEL` | `claude-opus-5-5` | Claude model used for replies |
 | `AI_EFFORT` | `low` | Reasoning effort (`low`, `medium`, `high`) |
 | `DATABASE_URL` | `sqlite:///backend/codetogether.db` | Any SQLAlchemy database URL |
@@ -101,7 +117,7 @@ For the frontend, set `VITE_API_URL` to point at a deployed backend.
 ## Tests
 
 ```bash
-cd backend && pytest        # 17 API, auth and WebSocket tests
+cd backend && pytest        # 21 API, auth, WebSocket and AI-provider tests
 cd frontend && npm test     # utility tests with Vitest
 ```
 
@@ -129,7 +145,7 @@ backend/
     models.py        SQLModel tables: User, Workspace, Message
     schemas.py       Request and response models
     security.py      Password hashing, JWT, auth dependency
-    ai.py            Claude streaming and offline assistant
+    ai.py            AI providers: Claude, Ollama, offline assistant
     realtime.py      WebSocket rooms and presence
     routers/         auth, workspaces, chat (WebSocket), stats
   tests/             pytest suite

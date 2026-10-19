@@ -28,13 +28,19 @@ class Settings:
     # Comma-separated list of extra allowed origins (e.g. a deployed frontend URL).
     cors_origins = [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
 
-    # AI: Claude is used when an API key is configured, otherwise the offline assistant.
-    ai_enabled = _bool("AI_ENABLED", True) and bool(
-        os.getenv("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_AUTH_TOKEN")
-    )
+    # AI provider, in order of preference: Claude (paid, needs an API key), then
+    # Ollama (free, local), then the built-in offline assistant. AI_ENABLED=false forces offline.
+    ai_enabled = _bool("AI_ENABLED", True)
+    claude_enabled = ai_enabled and bool(os.getenv("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_AUTH_TOKEN"))
     ai_model = os.getenv("AI_MODEL", "claude-opus-5-5")
     ai_effort = os.getenv("AI_EFFORT", "low")
     ai_history_messages = int(os.getenv("AI_HISTORY_MESSAGES", "20"))
+
+    ollama_enabled = ai_enabled and _bool("OLLAMA_ENABLED", True)
+    ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434").rstrip("/")
+    ollama_model = os.getenv("OLLAMA_MODEL", "qwen2.5-coder:1.5b")
+    # Small local models on a CPU slow down a lot with long prompts, so send less history.
+    ollama_history_messages = int(os.getenv("OLLAMA_HISTORY_MESSAGES", "8"))
 
 
 settings = Settings()

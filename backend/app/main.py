@@ -16,6 +16,7 @@ logger = logging.getLogger("codetogether")
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     init_db()
+    await assistant.refresh(force=True)
     logger.info("AI mode: %s (%s)", assistant.mode, assistant.model)
     yield
 

@@ -15,12 +15,14 @@ STARTED_AT = time.time()
 
 
 @router.get("/health")
-def health() -> dict[str, str]:
+async def health() -> dict[str, str]:
+    await assistant.refresh()
     return {"status": "ok", "ai_mode": assistant.mode}
 
 
 @router.get("/stats", response_model=StatsOut)
-def stats(session: Session = Depends(get_session)) -> StatsOut:
+async def stats(session: Session = Depends(get_session)) -> StatsOut:
+    await assistant.refresh()
     count = lambda stmt: session.exec(stmt).one()  # noqa: E731
     ai_filter = Message.role == "assistant"
 

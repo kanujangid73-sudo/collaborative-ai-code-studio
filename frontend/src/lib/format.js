@@ -37,6 +37,7 @@ export function mergeMessages(...lists) {
 export function modelLabel(model) {
   if (!model) return "";
   if (model === "offline-assistant") return "Offline assistant";
+  if (!model.startsWith("claude-")) return `${model} · local`; // Ollama model
   return model
     .replace(/^claude-/, "Claude ")
     .replace(/-(\d+)-(\d+)$/, " $1.$2")

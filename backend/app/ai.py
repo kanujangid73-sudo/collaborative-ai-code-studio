@@ -1,12 +1,19 @@
-"""AI assistant: streams replies from Claude, or from a built-in offline assistant
-when no Anthropic credentials are configured."""
+"""AI assistant. Streams replies from the best available provider:
+
+1. Claude (Anthropic API) when an API key is configured
+2. Ollama, a free local model server, when it is running with the configured model
+3. A built-in offline assistant otherwise
+"""
 
 import asyncio
+import json
 import logging
+import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 
 import anthropic
+import httpx
 
 from .config import settings
 
@@ -103,19 +110,63 @@ def build_messages(history: list[HistoryItem]) -> list[dict]:
     return turns
 
 
+class OllamaError(Exception):
+    pass
+
+
 class Assistant:
-    def __init__(self) -> None:
-        self.client = anthropic.AsyncAnthropic() if settings.ai_enabled else None
+    OLLAMA_RECHECK_SECONDS = 15
+
+    def __init__(self, transport: httpx.AsyncBaseTransport | None = None) -> None:
+        self.client = anthropic.AsyncAnthropic() if settings.claude_enabled else None
+        self.ollama_status = "disabled" if not settings.ollama_enabled else "unknown"
+        self._ollama_checked_at = 0.0
+        self._transport = transport  # lets tests swap in a fake Ollama server
 
     @property
     def mode(self) -> str:
-        return "claude" if self.client else "offline"
+        if self.client:
+            return "claude"
+        return "ollama" if self.ollama_status == "ready" else "offline"
 
     @property
     def model(self) -> str:
-        return settings.ai_model if self.client else OFFLINE_MODEL
+        return {"claude": settings.ai_model, "ollama": settings.ollama_model}.get(self.mode, OFFLINE_MODEL)
+
+    def _http(self, timeout: httpx.Timeout) -> httpx.AsyncClient:
+        return httpx.AsyncClient(base_url=settings.ollama_url, timeout=timeout, transport=self._transport)
+
+    async def refresh(self, force: bool = False) -> None:
+        """Re-check whether Ollama is reachable and has the model, at most every few seconds."""
+        if self.client or self.ollama_status == "disabled":
+            return
+        if not force and time.monotonic() - self._ollama_checked_at < self.OLLAMA_RECHECK_SECONDS:
+            return
+        self._ollama_checked_at = time.monotonic()
+        previous = self.ollama_status
+        try:
+            async with self._http(httpx.Timeout(3.0)) as http:
+                res = await http.get("/api/tags")
+                res.raise_for_status()
+            names = {m.get("name", "") for m in res.json().get("models", [])}
+            wanted = settings.ollama_model
+            found = wanted in names or f"{wanted}:latest" in names
+            self.ollama_status = "ready" if found else "model_missing"
+        except (httpx.HTTPError, ValueError):
+            self.ollama_status = "unreachable"
+        if self.ollama_status != previous:
+            if self.ollama_status == "model_missing":
+                logger.warning("Ollama is running but '%s' is not downloaded. Run: ollama pull %s",
+                               settings.ollama_model, settings.ollama_model)
+            else:
+                logger.info("Ollama status: %s (%s)", self.ollama_status, settings.ollama_model)
 
     async def stream_reply(self, history: list[HistoryItem]) -> AsyncIterator[str]:
+        await self.refresh()
+        if self.mode == "ollama":
+            async for chunk in self._ollama_with_fallback(history):
+                yield chunk
+            return
         if self.client is None:
             async for chunk in self._offline(history):
                 yield chunk
@@ -153,6 +204,48 @@ class Assistant:
         elif final.stop_reason == "max_tokens":
             yield "\n\n_(Reply was cut off because it reached the length limit.)_"
 
+    async def _ollama_with_fallback(self, history: list[HistoryItem]) -> AsyncIterator[str]:
+        produced = False
+        try:
+            async for chunk in self._ollama(history):
+                produced = True
+                yield chunk
+        except (httpx.HTTPError, OllamaError) as exc:
+            logger.error("Ollama request failed: %s", exc)
+            self.ollama_status = "unreachable"
+            self._ollama_checked_at = time.monotonic()
+            if produced:
+                yield "\n\n_(The local AI stopped responding before finishing.)_"
+            else:
+                yield "_The local AI (Ollama) isn't responding, so here is the offline assistant instead._\n\n"
+                async for chunk in self._offline(history):
+                    yield chunk
+
+    async def _ollama(self, history: list[HistoryItem]) -> AsyncIterator[str]:
+        messages = build_messages(history[-settings.ollama_history_messages:])
+        payload = {
+            "model": settings.ollama_model,
+            "messages": [{"role": "system", "content": SYSTEM_PROMPT}, *messages],
+            "stream": True,
+        }
+        # Generous read timeout: a small model on a laptop CPU can take a while to start.
+        async with self._http(httpx.Timeout(300.0, connect=3.0)) as http:
+            async with http.stream("POST", "/api/chat", json=payload) as res:
+                if res.status_code != 200:
+                    body = (await res.aread()).decode(errors="replace")
+                    raise OllamaError(f"HTTP {res.status_code}: {body[:200]}")
+                async for line in res.aiter_lines():
+                    if not line.strip():
+                        continue
+                    data = json.loads(line)
+                    if "error" in data:
+                        raise OllamaError(data["error"])
+                    text = data.get("message", {}).get("content", "")
+                    if text:
+                        yield text
+                    if data.get("done"):
+                        break
+
     async def _offline(self, history: list[HistoryItem]) -> AsyncIterator[str]:
         last = next((h for h in reversed(history) if h.role == "user"), None)
         if last is None:
@@ -163,7 +256,8 @@ class Assistant:
             f"Thanks, **{last.author}**. I'm running in offline mode, so I can only give "
             "general guidance. Ask about APIs, debugging, testing, databases, frontend or "
             "deployment for a more specific tip.\n\n"
-            "_Set `ANTHROPIC_API_KEY` on the server to enable full AI replies._",
+            "_Run [Ollama](https://ollama.com) locally (free) or set `ANTHROPIC_API_KEY` "
+            "on the server to enable full AI replies._",
         )
         reply = f"**{last.author}**, {tip[0].lower()}{tip[1:]}" if intent != "general" else tip
         # Stream word by word so the UI behaves the same as with a real model.

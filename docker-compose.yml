@@ -6,6 +6,11 @@ services:
     env_file:
       - path: ./backend/.env
         required: false
+    environment:
+      # Reach an Ollama server running on the host machine.
+      OLLAMA_URL: http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - backend-data:/data
     healthcheck:

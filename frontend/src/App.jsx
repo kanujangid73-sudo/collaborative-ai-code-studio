@@ -133,7 +133,7 @@ function Dashboard({ token, user, logout }) {
     }
   }
 
-  const aiLabel = stats ? (stats.ai_mode === "claude" ? modelLabel(stats.ai_model) : "Offline assistant") : "…";
+  const aiLabel = stats ? modelLabel(stats.ai_model) : "…";
 
   return (
     <div className="layout">

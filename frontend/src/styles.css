@@ -1038,7 +1038,7 @@ h1, h2, h3, p { margin: 0; }
   font-weight: 500;
 }
 
-.ai-badge.claude { border-color: var(--lime-line); background: var(--lime-dim); color: var(--lime); }
+.ai-badge.claude, .ai-badge.ollama { border-color: var(--lime-line); background: var(--lime-dim); color: var(--lime); }
 
 @media (max-width: 900px) {
   .auth { grid-template-columns: minmax(0, 1fr); }
