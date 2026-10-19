@@ -6,6 +6,7 @@ const LABELS = {
   testing: "Testing",
   frontend: "Frontend",
   devops: "DevOps",
+  database: "Database",
   general: "General",
 };
 
@@ -18,7 +19,7 @@ export default function IntentBreakdown({ intents }) {
       <div className="card-header">
         <div>
           <h2>Topics detected</h2>
-          <p>What the backend classified your messages as</p>
+          <p>What the team has been asking about</p>
         </div>
       </div>
       {rows.length === 0 ? (

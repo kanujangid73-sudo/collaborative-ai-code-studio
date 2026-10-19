@@ -1,11 +1,12 @@
 import React, { useState } from "react";
 
+const secs = (ms) => (ms / 1000).toFixed(1);
+
 export default function LatencyChart({ data }) {
   const [hover, setHover] = useState(null);
-  const max = Math.max(50, ...data.map((d) => d.ms));
-  // Round the axis top up to a clean number.
-  const step = max > 500 ? 100 : max > 100 ? 50 : 10;
-  const top = Math.ceil(max / step) * step;
+  const max = Math.max(1000, ...data.map((d) => d.ms));
+  // Round the axis top up to a whole number of seconds.
+  const top = Math.ceil(max / 1000) * 1000;
   const active = hover != null ? data[hover] : null;
 
   return (
@@ -13,22 +14,22 @@ export default function LatencyChart({ data }) {
       <div className="card-header">
         <div>
           <h2>Response time</h2>
-          <p>Round-trip latency per request, in ms</p>
+          <p>Time for the AI to finish each reply, in seconds</p>
         </div>
         {data.length > 0 && (
           <span className="chart-latest">
-            Latest <strong>{data[data.length - 1].ms} ms</strong>
+            Latest <strong>{secs(data[data.length - 1].ms)}s</strong>
           </span>
         )}
       </div>
 
       {data.length === 0 ? (
-        <div className="chart-empty">Send a message to start measuring latency.</div>
+        <div className="chart-empty">No AI replies yet. Ask the AI something to see its response times.</div>
       ) : (
         <div className="chart">
           <div className="y-axis" aria-hidden="true">
-            <span>{top}</span>
-            <span>{top / 2}</span>
+            <span>{top / 1000}s</span>
+            <span>{top / 2000}s</span>
             <span>0</span>
           </div>
           <div className="plot" onMouseLeave={() => setHover(null)}>
@@ -43,7 +44,7 @@ export default function LatencyChart({ data }) {
                   onFocus={() => setHover(i)}
                   onBlur={() => setHover(null)}
                   tabIndex={0}
-                  aria-label={`Message ${d.id}: ${d.ms} milliseconds`}
+                  aria-label={`Reply ${d.id}: ${secs(d.ms)} seconds`}
                 >
                   <div className="bar" style={{ height: `${Math.max(2, (d.ms / top) * 100)}%` }} />
                 </div>
@@ -55,8 +56,8 @@ export default function LatencyChart({ data }) {
                 style={{ left: `${((hover + 0.5) / data.length) * 100}%` }}
                 role="status"
               >
-                <strong>{active.ms} ms</strong>
-                <span>Message #{active.id} · {active.time.toLocaleTimeString()}</span>
+                <strong>{secs(active.ms)}s</strong>
+                <span>Reply #{active.id} · {new Date(active.created_at).toLocaleTimeString()}</span>
               </div>
             )}
           </div>

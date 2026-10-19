@@ -2,30 +2,43 @@ import React from "react";
 
 const FEATURES = [
   {
-    title: "Full-stack messaging",
-    text: "React sends messages to a FastAPI REST API, which validates them with Pydantic and replies.",
+    title: "AI pair programmer",
+    text: "Claude answers in the shared chat, streaming Markdown with syntax-highlighted code to everyone in the room.",
   },
   {
-    title: "Topic detection",
-    text: "The backend classifies each message (API, debugging, testing, frontend, DevOps) and suggests a next step.",
+    title: "Real-time collaboration",
+    text: "WebSocket rooms per workspace with live messages, presence avatars and typing indicators.",
   },
   {
-    title: "Live monitoring",
-    text: "Health polling, server uptime, round-trip latency and success rate update in real time.",
+    title: "Accounts & workspaces",
+    text: "JWT authentication with hashed passwords, and shared workspaces any teammate can create.",
   },
   {
     title: "Persistent history",
-    text: "Messages are kept server-side, so the console survives a page refresh.",
+    text: "Users, workspaces and messages are stored in SQLite through SQLModel, so nothing is lost on restart.",
+  },
+  {
+    title: "Live analytics",
+    text: "AI response times, topic detection, online users and uptime, refreshed automatically.",
+  },
+  {
+    title: "Production-ready setup",
+    text: "Pytest and Vitest suites, Docker Compose, and a GitHub Actions pipeline that tests every push.",
   },
 ];
 
-const STACK = ["React 18", "Vite 6", "JavaScript (ES2022)", "CSS custom properties", "Python 3", "FastAPI", "Pydantic", "Uvicorn", "REST / JSON", "CORS"];
+const STACK = [
+  "React 18", "Vite 6", "WebSockets", "react-markdown", "highlight.js", "Vitest",
+  "Python 3", "FastAPI", "SQLModel", "SQLite", "JWT", "Anthropic Claude API", "Pytest",
+  "Docker", "GitHub Actions",
+];
 
 const FLOW = [
-  { title: "React UI", sub: "Vite dev server · :5173" },
-  { title: "REST / JSON", sub: "fetch + CORS" },
+  { title: "React SPA", sub: "Vite · :5173" },
+  { title: "REST + WebSocket", sub: "JWT auth" },
   { title: "FastAPI", sub: "Uvicorn · :8000" },
-  { title: "In-memory store", sub: "history + stats" },
+  { title: "SQLite", sub: "SQLModel ORM" },
+  { title: "Claude API", sub: "streaming replies" },
 ];
 
 export default function AboutProject() {
@@ -35,10 +48,10 @@ export default function AboutProject() {
         <p className="eyebrow">About this project</p>
         <h2>A shared workspace where developers and AI build code together.</h2>
         <p className="muted">
-          CodeTogether is the foundation of a collaborative AI coding studio. This dashboard shows
-          the core plumbing: a React single-page app talking to a Python FastAPI service, with live
-          health monitoring, message history and request analytics. It is built to be extended with
-          a real LLM, authentication and real-time collaboration.
+          CodeTogether is a full-stack collaborative coding studio. Teammates sign in, join shared
+          workspaces and talk in real time, while an AI pair programmer powered by Claude answers
+          questions with working code, streamed live to everyone in the room. Without an API key it
+          falls back to a built-in offline assistant, so the app always works.
         </p>
       </div>
 
@@ -73,11 +86,11 @@ export default function AboutProject() {
         <div>
           <h3 className="small-heading">Roadmap</h3>
           <ul className="roadmap">
-            <li className="done">REST API with validation</li>
-            <li className="done">Live dashboard &amp; analytics</li>
-            <li>LLM-powered code suggestions</li>
-            <li>Real-time collaboration over WebSockets</li>
-            <li>User accounts &amp; shared workspaces</li>
+            <li className="done">REST API, auth &amp; database</li>
+            <li className="done">Real-time chat with AI streaming</li>
+            <li className="done">Tests, Docker &amp; CI</li>
+            <li>Shared live code editor</li>
+            <li>Workspace invites &amp; roles</li>
           </ul>
         </div>
       </div>

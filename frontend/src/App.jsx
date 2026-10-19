@@ -1,70 +1,77 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import AboutProject from "./components/AboutProject.jsx";
+import ActivityLog from "./components/ActivityLog.jsx";
+import AuthScreen from "./components/AuthScreen.jsx";
+import { AvatarStack } from "./components/Avatar.jsx";
+import ChatConsole from "./components/ChatConsole.jsx";
+import EndpointTable from "./components/EndpointTable.jsx";
+import IntentBreakdown from "./components/IntentBreakdown.jsx";
+import LatencyChart from "./components/LatencyChart.jsx";
 import Sidebar from "./components/Sidebar.jsx";
 import StatCard from "./components/StatCard.jsx";
-import ChatConsole from "./components/ChatConsole.jsx";
-import LatencyChart from "./components/LatencyChart.jsx";
-import IntentBreakdown from "./components/IntentBreakdown.jsx";
-import EndpointTable from "./components/EndpointTable.jsx";
-import ActivityLog from "./components/ActivityLog.jsx";
-import AboutProject from "./components/AboutProject.jsx";
 import { API_URL } from "./config.js";
-
+import { useAuth } from "./hooks/useAuth.js";
+import { useWorkspaceSocket } from "./hooks/useWorkspaceSocket.js";
+import { api } from "./lib/api.js";
+import { formatUptime, modelLabel } from "./lib/format.js";
 
 const POLL_MS = 10000;
 
-function formatUptime(seconds) {
-  if (seconds == null) return "—";
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
-  if (h) return `${h}h ${m}m`;
-  if (m) return `${m}m ${s}s`;
-  return `${s}s`;
+export default function App() {
+  const auth = useAuth();
+
+  if (auth.checking) {
+    return <div className="splash"><span className="brand-mark">{"</>"}</span></div>;
+  }
+  if (!auth.token || !auth.user) {
+    return <AuthScreen onSubmit={auth.authenticate} />;
+  }
+  return <Dashboard {...auth} />;
 }
 
-export default function App() {
-  const [status, setStatus] = useState("checking");
+function Dashboard({ token, user, logout }) {
+  const [workspaces, setWorkspaces] = useState([]);
+  const [activeId, setActiveId] = useState(null);
   const [stats, setStats] = useState(null);
-  const [messages, setMessages] = useState([]);
-  const [latencies, setLatencies] = useState([]);
-  const [attempts, setAttempts] = useState({ ok: 0, failed: 0 });
+  const [apiStatus, setApiStatus] = useState("checking");
   const [activity, setActivity] = useState([]);
-  const [isSending, setIsSending] = useState(false);
-  const [error, setError] = useState("");
+  const presenceRef = useRef(null);
 
   const log = useCallback((type, text) => {
-    setActivity((items) => [{ id: crypto.randomUUID(), type, text, time: new Date() }, ...items].slice(0, 30));
+    setActivity((items) => [{ id: crypto.randomUUID(), type, text, time: new Date() }, ...items].slice(0, 40));
   }, []);
 
-  const refresh = useCallback(async () => {
+  const refreshStats = useCallback(async () => {
     try {
-      const [healthRes, statsRes] = await Promise.all([
-        fetch(`${API_URL}/api/health`),
-        fetch(`${API_URL}/api/stats`),
-      ]);
-      if (!healthRes.ok || !statsRes.ok) throw new Error("bad response");
-      setStats(await statsRes.json());
-      setStatus((prev) => {
-        if (prev !== "online") log("success", "Connected to FastAPI backend");
+      setStats(await api("/api/stats"));
+      setApiStatus((prev) => {
+        if (prev === "offline") log("success", "Reconnected to the backend");
         return "online";
       });
     } catch {
-      setStatus((prev) => {
+      setApiStatus((prev) => {
         if (prev !== "offline") log("error", "Backend unreachable");
         return "offline";
       });
     }
   }, [log]);
 
+  const refreshWorkspaces = useCallback(async () => {
+    try {
+      const list = await api("/api/workspaces", { token });
+      setWorkspaces(list);
+      setActiveId((current) => current ?? list[0]?.id ?? null);
+    } catch (err) {
+      if (err.status === 401) logout();
+    }
+  }, [token, logout]);
+
   useEffect(() => {
-    fetch(`${API_URL}/api/messages`)
-      .then((res) => (res.ok ? res.json() : []))
-      .then((data) => setMessages(data.map((m) => ({ ...m, latency: null }))))
-      .catch(() => {});
-    refresh();
-    const timer = setInterval(refresh, POLL_MS);
+    refreshWorkspaces();
+    refreshStats();
+    const timer = setInterval(refreshStats, POLL_MS);
     return () => clearInterval(timer);
-  }, [refresh]);
+  }, [refreshWorkspaces, refreshStats]);
 
   // Tick uptime locally between polls.
   useEffect(() => {
@@ -74,73 +81,87 @@ export default function App() {
     return () => clearInterval(timer);
   }, []);
 
-  async function sendMessage(text) {
-    setIsSending(true);
-    setError("");
-    const started = performance.now();
-    try {
-      const res = await fetch(`${API_URL}/api/message`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text }),
-      });
-      if (!res.ok) throw new Error(`API returned HTTP ${res.status}`);
-      const data = await res.json();
-      const latency = Math.round(performance.now() - started);
-      setMessages((items) => [...items, { ...data, latency }]);
-      setLatencies((items) => [...items, { id: data.id, ms: latency, time: new Date() }].slice(-24));
-      setAttempts((a) => ({ ...a, ok: a.ok + 1 }));
-      log("message", `Message #${data.id} answered in ${latency} ms (${data.intent})`);
-      refresh();
-      return true;
-    } catch (err) {
-      setAttempts((a) => ({ ...a, failed: a.failed + 1 }));
-      setError(`${err.message}. Make sure the FastAPI server is running at ${API_URL}.`);
-      log("error", "Message failed to send");
-      return false;
-    } finally {
-      setIsSending(false);
-    }
+  const activeWorkspace = workspaces.find((w) => w.id === activeId);
+
+  const handleEvent = useCallback(
+    (event) => {
+      if (event.type === "presence") {
+        const prev = presenceRef.current;
+        presenceRef.current = event.users;
+        if (prev) {
+          event.users.filter((u) => !prev.includes(u)).forEach((u) => log("info", `${u} joined the workspace`));
+          prev.filter((u) => !event.users.includes(u)).forEach((u) => log("info", `${u} left the workspace`));
+        }
+      } else if (event.type === "message" && event.message.author !== user.username) {
+        log("message", `${event.message.author} sent a message`);
+      } else if (event.type === "ai_done") {
+        const m = event.message;
+        log("success", `AI replied in ${(m.latency_ms / 1000).toFixed(1)}s (${m.intent})`);
+        refreshStats();
+        refreshWorkspaces();
+      } else if (event.type === "cleared") {
+        log("info", `${event.by} cleared the history`);
+        refreshStats();
+        refreshWorkspaces();
+      }
+    },
+    [log, user.username, refreshStats, refreshWorkspaces],
+  );
+
+  const socket = useWorkspaceSocket({ workspaceId: activeId, token, onEvent: handleEvent, onUnauthorized: logout });
+
+  useEffect(() => {
+    presenceRef.current = null;
+    if (activeWorkspace) log("info", `Opened #${activeWorkspace.name}`);
+    // Only log when the workspace changes, not on every list refresh.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeId]);
+
+  async function createWorkspace(name) {
+    const ws = await api("/api/workspaces", { token, method: "POST", body: { name } });
+    setWorkspaces((list) => [...list, ws]);
+    setActiveId(ws.id);
+    log("success", `Created workspace #${ws.name}`);
   }
 
   async function clearHistory() {
+    if (!activeWorkspace || !window.confirm(`Clear all messages in #${activeWorkspace.name}?`)) return;
     try {
-      const res = await fetch(`${API_URL}/api/messages`, { method: "DELETE" });
-      if (!res.ok) throw new Error();
-      const data = await res.json();
-      setMessages([]);
-      log("info", `Cleared ${data.cleared} stored messages`);
-      refresh();
-    } catch {
-      setError("Could not clear history.");
+      await api(`/api/workspaces/${activeWorkspace.id}/messages`, { token, method: "DELETE" });
+    } catch (err) {
+      log("error", err.message);
     }
   }
 
-  const avgLatency = useMemo(() => {
-    if (!latencies.length) return null;
-    return Math.round(latencies.reduce((sum, l) => sum + l.ms, 0) / latencies.length);
-  }, [latencies]);
-
-  const totalAttempts = attempts.ok + attempts.failed;
-  const successRate = totalAttempts ? Math.round((attempts.ok / totalAttempts) * 100) : null;
+  const aiLabel = stats ? (stats.ai_mode === "claude" ? modelLabel(stats.ai_model) : "Offline assistant") : "…";
 
   return (
     <div className="layout">
-      <Sidebar status={status} />
+      <Sidebar
+        user={user}
+        workspaces={workspaces}
+        activeId={activeId}
+        onSelect={setActiveId}
+        onCreate={createWorkspace}
+        onLogout={logout}
+        apiStatus={apiStatus}
+      />
 
       <main className="main">
         <header className="page-header" id="overview">
           <div>
             <p className="eyebrow">Dashboard</p>
-            <h1>Collaborative AI Code Studio</h1>
-            <p className="subtitle">
-              Live view of the React frontend talking to the FastAPI backend.
-            </p>
+            <h1>Welcome back, {user.username}</h1>
+            <p className="subtitle">Your team's collaborative AI coding studio, live.</p>
           </div>
           <div className="header-actions">
-            <span className={`status-pill ${status}`}>
+            <AvatarStack names={socket.presence} />
+            <span className={`ai-badge ${stats?.ai_mode ?? ""}`} title="AI model answering in chat">
+              ✦ {aiLabel}
+            </span>
+            <span className={`status-pill ${apiStatus}`}>
               <span className="status-dot" />
-              API {status}
+              API {apiStatus}
             </span>
             <a className="button-ghost" href={`${API_URL}/docs`} target="_blank" rel="noreferrer">
               API docs <span aria-hidden="true">↗</span>
@@ -150,17 +171,23 @@ export default function App() {
 
         <section className="stats-grid" aria-label="Key metrics">
           <StatCard
-            label="Messages processed"
-            value={stats ? stats.total_messages : "—"}
-            hint={stats ? `${stats.stored_messages} in history` : "Waiting for backend"}
+            label="Messages"
+            value={stats?.messages ?? "—"}
+            hint={stats ? `${stats.ai_replies} AI replies · ${stats.workspaces} workspaces` : "Waiting for backend"}
             icon="✉"
           />
           <StatCard
-            label="Avg response time"
-            value={avgLatency != null ? `${avgLatency}` : "—"}
-            unit={avgLatency != null ? "ms" : ""}
-            hint={latencies.length ? `Across ${latencies.length} requests` : "Send a message to measure"}
+            label="Avg AI response"
+            value={stats?.avg_ai_latency_ms != null ? (stats.avg_ai_latency_ms / 1000).toFixed(1) : "—"}
+            unit={stats?.avg_ai_latency_ms != null ? "s" : ""}
+            hint={stats?.ai_replies ? `Across ${stats.ai_replies} replies` : "Ask the AI to measure"}
             icon="⚡"
+          />
+          <StatCard
+            label="Online now"
+            value={stats?.online_users ?? "—"}
+            hint={stats ? `${stats.users} registered users` : "—"}
+            icon="◉"
           />
           <StatCard
             label="Server uptime"
@@ -168,39 +195,31 @@ export default function App() {
             hint={stats ? `Since ${new Date(stats.started_at).toLocaleTimeString()}` : "Offline"}
             icon="◷"
           />
-          <StatCard
-            label="Success rate"
-            value={successRate != null ? `${successRate}` : "—"}
-            unit={successRate != null ? "%" : ""}
-            hint={totalAttempts ? `${attempts.ok} of ${totalAttempts} requests` : "This session"}
-            icon="✓"
-          />
         </section>
 
         <section className="grid-main" id="console">
           <ChatConsole
-            messages={messages}
-            onSend={sendMessage}
+            workspace={activeWorkspace}
+            user={user}
+            socket={socket}
+            canClear={Boolean(activeWorkspace) && [null, user.id].includes(activeWorkspace.owner_id)}
             onClear={clearHistory}
-            isSending={isSending}
-            error={error}
-            disabled={status === "offline"}
           />
           <div className="stack">
-            <LatencyChart data={latencies} />
+            <LatencyChart data={stats?.recent_latencies ?? []} />
             <IntentBreakdown intents={stats?.intents ?? {}} />
           </div>
         </section>
 
         <section className="grid-split" id="endpoints">
-          <EndpointTable status={status} />
+          <EndpointTable status={apiStatus} />
           <ActivityLog items={activity} />
         </section>
 
         <AboutProject />
 
         <footer className="page-footer">
-          <span>CodeTogether · Built with React, Vite &amp; FastAPI</span>
+          <span>CodeTogether · React, FastAPI, WebSockets &amp; Claude</span>
           <a href={`${API_URL}/docs`} target="_blank" rel="noreferrer">
             OpenAPI documentation ↗
           </a>

@@ -1,11 +1,16 @@
 import React from "react";
 
 const ENDPOINTS = [
+  { method: "POST", path: "/api/auth/register", desc: "Create an account, get a JWT" },
+  { method: "POST", path: "/api/auth/login", desc: "Log in, get a JWT" },
+  { method: "GET", path: "/api/auth/me", desc: "Current user" },
+  { method: "GET", path: "/api/workspaces", desc: "List shared workspaces" },
+  { method: "POST", path: "/api/workspaces", desc: "Create a workspace" },
+  { method: "GET", path: "/api/workspaces/{id}/messages", desc: "Message history" },
+  { method: "DELETE", path: "/api/workspaces/{id}/messages", desc: "Clear history (owner)" },
+  { method: "WS", path: "/ws/workspaces/{id}", desc: "Live chat, presence, AI streaming" },
+  { method: "GET", path: "/api/stats", desc: "Usage and latency analytics" },
   { method: "GET", path: "/api/health", desc: "Liveness check" },
-  { method: "POST", path: "/api/message", desc: "Send a message, get a reply" },
-  { method: "GET", path: "/api/messages", desc: "Recent message history" },
-  { method: "DELETE", path: "/api/messages", desc: "Clear stored history" },
-  { method: "GET", path: "/api/stats", desc: "Uptime and usage stats" },
 ];
 
 export default function EndpointTable({ status }) {
