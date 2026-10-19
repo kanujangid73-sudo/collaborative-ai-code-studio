@@ -9,7 +9,7 @@ A full-stack, real-time workspace where developers and an AI pair programmer bui
 
 ## Features
 
-- **AI pair programmer.** Replies stream token by token over WebSockets and render as Markdown with highlighted code. There are three providers, chosen automatically: the **Claude API** (when a key is set), a **free local model through Ollama**, or a built-in **offline assistant**. The app always works and can run entirely for free.
+- **AI pair programmer.** Replies stream token by token over WebSockets and render as Markdown with highlighted code. Providers are chosen automatically, in this order: the **Claude API** (paid), **Google Gemini** (free tier), a **local model through Ollama** (free), or a built-in **offline assistant**. The app always works and can run entirely for free.
 - **Real-time collaboration.** One WebSocket room per workspace, with live messages, presence avatars, typing indicators and automatic reconnect.
 - **Accounts and workspaces.** Sign up and log in with JWT tokens and PBKDF2-hashed passwords. Anyone can create a shared workspace, and only its owner can clear the history.
 - **Persistent storage.** Users, workspaces and messages are stored in SQLite through SQLModel.
@@ -24,7 +24,8 @@ A full-stack, real-time workspace where developers and an AI pair programmer bui
 │  Vite :5173  │ ◀──────────── │  Uvicorn :8000   │              └──────────┘
 │              │   WebSocket   │                  │   streaming  ┌──────────┐
 │              │ ◀───────────▶ │ rooms + presence │ ───────────▶ │ Claude / │
-└──────────────┘               └──────────────────┘              │  Ollama  │
+└──────────────┘               └──────────────────┘              │ Gemini / │
+                                                                 │  Ollama  │
                                                                  └──────────┘
 ```
 
@@ -41,7 +42,7 @@ When someone sends a message in a workspace:
 |---|---|
 | Frontend | React 18, Vite 6, react-markdown, highlight.js, Vitest |
 | Backend | Python, FastAPI, SQLModel/SQLAlchemy, SQLite, PyJWT, WebSockets |
-| AI | Anthropic Python SDK (Claude), Ollama (free local models), offline fallback |
+| AI | Anthropic Python SDK (Claude), Gemini REST API, Ollama, offline fallback |
 | DevOps | Docker, Docker Compose, nginx, GitHub Actions |
 
 ## Getting started
@@ -75,7 +76,15 @@ npm run dev
 
 Open http://localhost:5173, create an account, and start chatting. To try the real-time features, open a second browser window and sign up as another user.
 
-### 3. Free AI with Ollama (optional)
+### 3. Free AI with Gemini (optional, recommended)
+
+1. Create a free API key at https://aistudio.google.com/apikey. You need a Google account; no card is required.
+2. In `backend/.env`, set `GEMINI_API_KEY=your-key`.
+3. Restart the backend. The dashboard badge shows **Gemini 3.8 Flash**.
+
+The free tier has rate limits, which you can see in Google AI Studio. Google may use free-tier prompts to improve its products, so don't send private code.
+
+### 4. Free AI with Ollama (optional, fully local)
 
 Real AI replies with no API key and no cost. The model runs on your own computer.
 
@@ -104,6 +113,8 @@ Set these in `backend/.env` (see [`backend/.env.example`](backend/.env.example))
 |---|---|---|
 | `SECRET_KEY` | random per start | Signs login tokens. **Set it in production**, otherwise everyone is logged out on restart. |
 | `ANTHROPIC_API_KEY` | none | Turns on Claude replies (paid). Takes priority over Ollama. |
+| `GEMINI_API_KEY` | none | Turns on Gemini replies (free tier). Used when there's no Anthropic key. |
+| `GEMINI_MODEL` | `gemini-3.8-flash` | Gemini model used for replies |
 | `OLLAMA_MODEL` | `qwen2.5-coder:1.5b` | Local model used when Ollama is running |
 | `OLLAMA_URL` | `http://localhost:11434` | Address of the Ollama server |
 | `AI_ENABLED` | `true` | Set to `false` to always use the offline assistant |
@@ -117,7 +128,7 @@ For the frontend, set `VITE_API_URL` to point at a deployed backend.
 ## Tests
 
 ```bash
-cd backend && pytest        # 21 API, auth, WebSocket and AI-provider tests
+cd backend && pytest        # 25 API, auth, WebSocket and AI-provider tests
 cd frontend && npm test     # utility tests with Vitest
 ```
 
@@ -145,7 +156,7 @@ backend/
     models.py        SQLModel tables: User, Workspace, Message
     schemas.py       Request and response models
     security.py      Password hashing, JWT, auth dependency
-    ai.py            AI providers: Claude, Ollama, offline assistant
+    ai.py            AI providers: Claude, Gemini, Ollama, offline assistant
     realtime.py      WebSocket rooms and presence
     routers/         auth, workspaces, chat (WebSocket), stats
   tests/             pytest suite

@@ -1,8 +1,9 @@
 """AI assistant. Streams replies from the best available provider:
 
-1. Claude (Anthropic API) when an API key is configured
-2. Ollama, a free local model server, when it is running with the configured model
-3. A built-in offline assistant otherwise
+1. Claude (Anthropic API) when an Anthropic API key is configured
+2. Gemini (Google, has a free tier) when a Gemini API key is configured
+3. Ollama, a free local model server, when it is running with the configured model
+4. A built-in offline assistant otherwise
 """
 
 import asyncio
@@ -114,6 +115,12 @@ class OllamaError(Exception):
     pass
 
 
+class GeminiError(Exception):
+    def __init__(self, status: int, detail: str) -> None:
+        super().__init__(f"HTTP {status}: {detail}")
+        self.status = status
+
+
 class Assistant:
     OLLAMA_RECHECK_SECONDS = 15
 
@@ -121,24 +128,29 @@ class Assistant:
         self.client = anthropic.AsyncAnthropic() if settings.claude_enabled else None
         self.ollama_status = "disabled" if not settings.ollama_enabled else "unknown"
         self._ollama_checked_at = 0.0
-        self._transport = transport  # lets tests swap in a fake Ollama server
+        self._transport = transport  # lets tests swap in fake Gemini / Ollama servers
 
     @property
     def mode(self) -> str:
         if self.client:
             return "claude"
+        if settings.gemini_enabled:
+            return "gemini"
         return "ollama" if self.ollama_status == "ready" else "offline"
 
     @property
     def model(self) -> str:
-        return {"claude": settings.ai_model, "ollama": settings.ollama_model}.get(self.mode, OFFLINE_MODEL)
+        models = {"claude": settings.ai_model, "gemini": settings.gemini_model, "ollama": settings.ollama_model}
+        return models.get(self.mode, OFFLINE_MODEL)
 
-    def _http(self, timeout: httpx.Timeout) -> httpx.AsyncClient:
-        return httpx.AsyncClient(base_url=settings.ollama_url, timeout=timeout, transport=self._transport)
+    def _http(self, timeout: httpx.Timeout, base_url: str | None = None) -> httpx.AsyncClient:
+        return httpx.AsyncClient(
+            base_url=base_url or settings.ollama_url, timeout=timeout, transport=self._transport
+        )
 
     async def refresh(self, force: bool = False) -> None:
         """Re-check whether Ollama is reachable and has the model, at most every few seconds."""
-        if self.client or self.ollama_status == "disabled":
+        if self.mode in ("claude", "gemini") or self.ollama_status == "disabled":
             return
         if not force and time.monotonic() - self._ollama_checked_at < self.OLLAMA_RECHECK_SECONDS:
             return
@@ -163,14 +175,16 @@ class Assistant:
 
     async def stream_reply(self, history: list[HistoryItem]) -> AsyncIterator[str]:
         await self.refresh()
-        if self.mode == "ollama":
-            async for chunk in self._ollama_with_fallback(history):
-                yield chunk
-            return
-        if self.client is None:
-            async for chunk in self._offline(history):
-                yield chunk
-            return
+        providers = {
+            "claude": self._claude_safe,
+            "gemini": self._gemini_with_fallback,
+            "ollama": self._ollama_with_fallback,
+            "offline": self._offline,
+        }
+        async for chunk in providers[self.mode](history):
+            yield chunk
+
+    async def _claude_safe(self, history: list[HistoryItem]) -> AsyncIterator[str]:
         try:
             async for chunk in self._claude(history):
                 yield chunk
@@ -203,6 +217,64 @@ class Assistant:
             yield "\n\n_I can't help with that request._"
         elif final.stop_reason == "max_tokens":
             yield "\n\n_(Reply was cut off because it reached the length limit.)_"
+
+    async def _gemini_with_fallback(self, history: list[HistoryItem]) -> AsyncIterator[str]:
+        produced = False
+        try:
+            async for chunk in self._gemini(history):
+                produced = True
+                yield chunk
+            return
+        except GeminiError as exc:
+            logger.error("Gemini request failed: %s", exc)
+            if exc.status == 429:
+                note = "_Gemini's free-tier limit was reached. Try again in a minute._"
+            elif exc.status in (400, 401, 403):
+                note = "_Gemini rejected the request. Check `GEMINI_API_KEY` and `GEMINI_MODEL` on the server._"
+            else:
+                note = "_Gemini returned an error._"
+        except httpx.HTTPError as exc:
+            logger.error("Gemini connection failed: %s", exc)
+            note = "_Could not reach Gemini. Check the server's internet connection._"
+        if produced:
+            yield f"\n\n{note}"
+            return
+        yield f"{note} Here is the offline assistant instead.\n\n"
+        async for chunk in self._offline(history):
+            yield chunk
+
+    async def _gemini(self, history: list[HistoryItem]) -> AsyncIterator[str]:
+        turns = build_messages(history[-settings.ai_history_messages:])
+        payload = {
+            "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]},
+            "contents": [
+                {"role": "user" if t["role"] == "user" else "model", "parts": [{"text": t["content"]}]}
+                for t in turns
+            ],
+        }
+        path = f"/v1beta/models/{settings.gemini_model}:streamGenerateContent"
+        headers = {"x-goog-api-key": settings.gemini_api_key}
+        async with self._http(httpx.Timeout(120.0, connect=10.0), settings.gemini_url) as http:
+            async with http.stream("POST", path, params={"alt": "sse"}, json=payload, headers=headers) as res:
+                if res.status_code != 200:
+                    body = (await res.aread()).decode(errors="replace")
+                    raise GeminiError(res.status_code, body[:300])
+                async for line in res.aiter_lines():
+                    if not line.startswith("data:"):
+                        continue
+                    data = json.loads(line[5:])
+                    if data.get("promptFeedback", {}).get("blockReason"):
+                        yield "_Gemini declined to answer this request._"
+                        return
+                    for candidate in data.get("candidates", [])[:1]:
+                        for part in candidate.get("content", {}).get("parts", []):
+                            if part.get("text") and not part.get("thought"):
+                                yield part["text"]
+                        reason = candidate.get("finishReason")
+                        if reason == "MAX_TOKENS":
+                            yield "\n\n_(Reply was cut off because it reached the length limit.)_"
+                        elif reason in ("SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST"):
+                            yield "\n\n_Gemini stopped this reply for safety reasons._"
 
     async def _ollama_with_fallback(self, history: list[HistoryItem]) -> AsyncIterator[str]:
         produced = False
@@ -256,8 +328,8 @@ class Assistant:
             f"Thanks, **{last.author}**. I'm running in offline mode, so I can only give "
             "general guidance. Ask about APIs, debugging, testing, databases, frontend or "
             "deployment for a more specific tip.\n\n"
-            "_Run [Ollama](https://ollama.com) locally (free) or set `ANTHROPIC_API_KEY` "
-            "on the server to enable full AI replies._",
+            "_Set a free `GEMINI_API_KEY`, run [Ollama](https://ollama.com) locally, or set "
+            "`ANTHROPIC_API_KEY` on the server to enable full AI replies._",
         )
         reply = f"**{last.author}**, {tip[0].lower()}{tip[1:]}" if intent != "general" else tip
         # Stream word by word so the UI behaves the same as with a real model.

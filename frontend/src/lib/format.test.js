@@ -33,5 +33,6 @@ describe("mergeMessages", () => {
 describe("modelLabel", () => {
   it("formats Claude model ids", () => expect(modelLabel("claude-opus-5-5")).toBe("Claude Opus 5.5"));
   it("formats the offline assistant", () => expect(modelLabel("offline-assistant")).toBe("Offline assistant"));
+  it("formats Gemini model ids", () => expect(modelLabel("gemini-3.5-flash-lite")).toBe("Gemini 3.5 Flash Lite"));
   it("marks Ollama models as local", () => expect(modelLabel("qwen2.5-coder:1.5b")).toBe("qwen2.5-coder:1.5b · local"));
 });

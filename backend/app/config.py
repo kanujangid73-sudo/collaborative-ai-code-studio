@@ -28,13 +28,19 @@ class Settings:
     # Comma-separated list of extra allowed origins (e.g. a deployed frontend URL).
     cors_origins = [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
 
-    # AI provider, in order of preference: Claude (paid, needs an API key), then
-    # Ollama (free, local), then the built-in offline assistant. AI_ENABLED=false forces offline.
+    # AI provider, in order of preference: Claude (paid, needs an API key), Gemini (free tier,
+    # needs a Google API key), Ollama (free, local), then the built-in offline assistant.
+    # AI_ENABLED=false forces offline.
     ai_enabled = _bool("AI_ENABLED", True)
     claude_enabled = ai_enabled and bool(os.getenv("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_AUTH_TOKEN"))
     ai_model = os.getenv("AI_MODEL", "claude-opus-5-5")
     ai_effort = os.getenv("AI_EFFORT", "low")
     ai_history_messages = int(os.getenv("AI_HISTORY_MESSAGES", "20"))
+
+    gemini_api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or ""
+    gemini_enabled = ai_enabled and bool(gemini_api_key)
+    gemini_model = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
+    gemini_url = os.getenv("GEMINI_URL", "https://generativelanguage.googleapis.com").rstrip("/")
 
     ollama_enabled = ai_enabled and _bool("OLLAMA_ENABLED", True)
     ollama_url = os.getenv("OLLAMA_URL", "http://localhost:11434").rstrip("/")

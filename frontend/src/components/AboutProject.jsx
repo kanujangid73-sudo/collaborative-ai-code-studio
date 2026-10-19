@@ -3,7 +3,7 @@ import React from "react";
 const FEATURES = [
   {
     title: "AI pair programmer",
-    text: "Answers stream into the shared chat as Markdown with highlighted code, from Claude or a free local model via Ollama.",
+    text: "Answers stream into the shared chat as Markdown with highlighted code, from Claude, Google Gemini's free tier, or a local model via Ollama.",
   },
   {
     title: "Real-time collaboration",
@@ -29,7 +29,7 @@ const FEATURES = [
 
 const STACK = [
   "React 18", "Vite 6", "WebSockets", "react-markdown", "highlight.js", "Vitest",
-  "Python 3", "FastAPI", "SQLModel", "SQLite", "JWT", "Anthropic Claude API", "Ollama", "Pytest",
+  "Python 3", "FastAPI", "SQLModel", "SQLite", "JWT", "Claude API", "Gemini API", "Ollama", "Pytest",
   "Docker", "GitHub Actions",
 ];
 
@@ -38,7 +38,7 @@ const FLOW = [
   { title: "REST + WebSocket", sub: "JWT auth" },
   { title: "FastAPI", sub: "Uvicorn · :8000" },
   { title: "SQLite", sub: "SQLModel ORM" },
-  { title: "Claude / Ollama", sub: "streaming AI replies" },
+  { title: "Claude / Gemini / Ollama", sub: "streaming AI replies" },
 ];
 
 export default function AboutProject() {
@@ -50,9 +50,9 @@ export default function AboutProject() {
         <p className="muted">
           CodeTogether is a full-stack collaborative coding studio. Teammates sign in, join shared
           workspaces and talk in real time, while an AI pair programmer answers questions with
-          working code, streamed live to everyone in the room. It runs on Claude when an API key is
-          set, on a free local model through Ollama, or on a built-in offline assistant, so the app
-          always works at no cost.
+          working code, streamed live to everyone in the room. It runs on Claude, on Google
+          Gemini's free tier, on a local model through Ollama, or on a built-in offline assistant,
+          so the app always works and can run entirely for free.
         </p>
       </div>
 

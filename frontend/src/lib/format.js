@@ -37,6 +37,9 @@ export function mergeMessages(...lists) {
 export function modelLabel(model) {
   if (!model) return "";
   if (model === "offline-assistant") return "Offline assistant";
+  if (model.startsWith("gemini-")) {
+    return model.replace(/^gemini-/, "Gemini ").replace(/-([a-z])/g, (_, c) => ` ${c.toUpperCase()}`);
+  }
   if (!model.startsWith("claude-")) return `${model} · local`; // Ollama model
   return model
     .replace(/^claude-/, "Claude ")
