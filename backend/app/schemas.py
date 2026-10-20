@@ -2,7 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-from .models import Message, User, Workspace
+from .models import CodeFile, Message, User, Workspace
 
 
 class Credentials(BaseModel):
@@ -29,6 +29,13 @@ class TokenOut(BaseModel):
 class WorkspaceIn(BaseModel):
     name: str = Field(min_length=1, max_length=60)
     description: str = Field(default="", max_length=200)
+    is_private: bool = False
+
+
+class WorkspaceUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=60)
+    description: str | None = Field(default=None, max_length=200)
+    is_private: bool | None = None
 
 
 class WorkspaceOut(BaseModel):
@@ -36,19 +43,33 @@ class WorkspaceOut(BaseModel):
     name: str
     description: str
     owner_id: int | None
+    is_private: bool
+    role: str | None  # "owner", "member" or None (public workspace, not a member)
     message_count: int = 0
     created_at: datetime
 
     @classmethod
-    def of(cls, ws: Workspace, message_count: int = 0) -> "WorkspaceOut":
+    def of(cls, ws: Workspace, message_count: int = 0, role: str | None = None) -> "WorkspaceOut":
         return cls(
             id=ws.id,
             name=ws.name,
             description=ws.description,
             owner_id=ws.owner_id,
+            is_private=ws.is_private,
+            role=role,
             message_count=message_count,
             created_at=ws.created_at,
         )
+
+
+class MemberIn(BaseModel):
+    username: str = Field(min_length=1, max_length=32)
+
+
+class MemberOut(BaseModel):
+    user_id: int
+    username: str
+    role: str
 
 
 class MessageOut(BaseModel):
@@ -96,3 +117,22 @@ class StatsOut(BaseModel):
     ai_model: str
     intents: dict[str, int]
     recent_latencies: list[LatencyPoint]
+
+
+FILE_NAME_PATTERN = r"^[A-Za-z0-9_][A-Za-z0-9_.\-]{0,63}$"
+
+
+class FileIn(BaseModel):
+    name: str = Field(min_length=1, max_length=64, pattern=FILE_NAME_PATTERN)
+
+
+class FileOut(BaseModel):
+    id: int
+    workspace_id: int
+    name: str
+    created_by: int | None
+    updated_at: datetime
+
+    @classmethod
+    def of(cls, f: CodeFile) -> "FileOut":
+        return cls(id=f.id, workspace_id=f.workspace_id, name=f.name, created_by=f.created_by, updated_at=f.updated_at)

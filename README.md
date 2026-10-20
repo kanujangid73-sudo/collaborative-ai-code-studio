@@ -2,16 +2,21 @@
 
 [![CI](https://github.com/kanujangid73-sudo/collaborative-ai-code-studio/actions/workflows/ci.yml/badge.svg)](https://github.com/kanujangid73-sudo/collaborative-ai-code-studio/actions/workflows/ci.yml)
 
-A full-stack, real-time workspace where developers and an AI pair programmer build code together. Teammates sign in, join shared workspaces and chat live. Claude answers in the same conversation, streaming Markdown and syntax-highlighted code to everyone in the room.
+A full-stack, real-time workspace where developers and an AI pair programmer build code together. Teammates sign in, join shared workspaces, edit code together in a live editor with named cursors, and chat. Claude answers in the same conversation, streaming Markdown and syntax-highlighted code to everyone in the room.
 
 <!-- Add a screenshot: save it as docs/screenshot.png and uncomment the next line. -->
 <!-- ![CodeTogether dashboard](docs/screenshot.png) -->
 
 ## Features
 
+- **Shared code editor.** Google-Docs-style co-editing with CodeMirror 6 and Yjs CRDTs. Several people can type in the same file at once without conflicts, see each other's named cursors, and manage multiple files with syntax highlighting. The server merges edits with pycrdt and saves them to the database.
+- **Run code in the browser.** Press **▶ Run** to execute Python (via Pyodide, CPython compiled to WebAssembly) or JavaScript in a Web Worker, with live output, a timeout, and a Stop button. When it fails, **Ask AI to fix** sends the error and the code to the AI.
+- **Ask AI about code.** Select code (or use the whole file), press **Ask AI** or `Ctrl+Enter`, and the snippet goes to the AI together with your question. The answer appears in the shared chat.
 - **AI pair programmer.** Replies stream token by token over WebSockets and render as Markdown with highlighted code. Providers are chosen automatically, in this order: the **Claude API** (paid), **Google Gemini** (free tier), a **local model through Ollama** (free), or a built-in **offline assistant**. The app always works and can run entirely for free.
 - **Real-time collaboration.** One WebSocket room per workspace, with live messages, presence avatars, typing indicators and automatic reconnect.
-- **Accounts and workspaces.** Sign up and log in with JWT tokens and PBKDF2-hashed passwords. Anyone can create a shared workspace, and only its owner can clear the history.
+- **Accounts and workspaces.** Sign up and log in with JWT tokens and PBKDF2-hashed passwords. Workspaces can be public or **private (invite only)**, with owner and member roles. Owners can rename, invite, remove members and delete; members can leave. Removed members are disconnected right away.
+- **Chat tools.** Copy or **insert AI code blocks straight into the editor**, regenerate the last AI reply, and delete your own messages (owners can moderate).
+- **AI usage limits.** A per-user hourly cap on AI replies (20 by default) protects free-tier quotas, with the remaining count shown in the chat.
 - **Persistent storage.** Users, workspaces and messages are stored in SQLite through SQLModel.
 - **Live analytics dashboard.** Shows AI response times as a bar chart, detected topics, online users, message counts and server uptime.
 - **Engineering setup.** Pytest and Vitest test suites, Docker Compose, and GitHub Actions CI on every push.
@@ -29,6 +34,13 @@ A full-stack, real-time workspace where developers and an AI pair programmer bui
                                                                  └──────────┘
 ```
 
+When someone types in the editor:
+
+1. The browser's Yjs document produces a small binary update, which is sent as `doc_update` over the workspace WebSocket.
+2. The server merges it into its copy of the file (pycrdt) and relays it to everyone else in the room.
+3. Cursor positions travel the same way as `awareness` updates.
+4. The merged document is saved to SQLite every few seconds, so a late joiner gets the latest version.
+
 When someone sends a message in a workspace:
 
 1. The browser sends `{"type": "message"}` over the workspace WebSocket.
@@ -40,8 +52,8 @@ When someone sends a message in a workspace:
 
 | Layer | Tools |
 |---|---|
-| Frontend | React 18, Vite 6, react-markdown, highlight.js, Vitest |
-| Backend | Python, FastAPI, SQLModel/SQLAlchemy, SQLite, PyJWT, WebSockets |
+| Frontend | React 18, Vite 6, CodeMirror 6, Yjs, react-markdown, highlight.js, Vitest |
+| Backend | Python, FastAPI, SQLModel/SQLAlchemy, SQLite, pycrdt, PyJWT, WebSockets |
 | AI | Anthropic Python SDK (Claude), Gemini REST API, Ollama, offline fallback |
 | DevOps | Docker, Docker Compose, nginx, GitHub Actions |
 
@@ -118,6 +130,7 @@ Set these in `backend/.env` (see [`backend/.env.example`](backend/.env.example))
 | `OLLAMA_MODEL` | `qwen2.5-coder:1.5b` | Local model used when Ollama is running |
 | `OLLAMA_URL` | `http://localhost:11434` | Address of the Ollama server |
 | `AI_ENABLED` | `true` | Set to `false` to always use the offline assistant |
+| `AI_REQUESTS_PER_HOUR` | `20` | AI replies each user may request per hour (`0` = unlimited) |
 | `AI_MODEL` | `claude-opus-5-5` | Claude model used for replies |
 | `AI_EFFORT` | `low` | Reasoning effort (`low`, `medium`, `high`) |
 | `DATABASE_URL` | `sqlite:///backend/codetogether.db` | Any SQLAlchemy database URL |
@@ -128,7 +141,7 @@ For the frontend, set `VITE_API_URL` to point at a deployed backend.
 ## Tests
 
 ```bash
-cd backend && pytest        # 25 API, auth, WebSocket and AI-provider tests
+cd backend && pytest        # 41 API, auth, permissions, WebSocket, collaboration and AI tests
 cd frontend && npm test     # utility tests with Vitest
 ```
 
@@ -139,9 +152,15 @@ cd frontend && npm test     # utility tests with Vitest
 | POST | `/api/auth/register` | Create an account and receive a JWT |
 | POST | `/api/auth/login` | Log in and receive a JWT |
 | GET | `/api/auth/me` | Current user |
-| GET / POST | `/api/workspaces` | List or create workspaces |
+| GET / POST | `/api/workspaces` | List visible workspaces, or create one (optionally private) |
+| PATCH / DELETE | `/api/workspaces/{id}` | Rename, describe, make private, or delete (owner only) |
+| GET / POST | `/api/workspaces/{id}/members` | List members, or invite by username (owner only) |
+| DELETE | `/api/workspaces/{id}/members/{user}` | Remove a member, or leave |
 | GET / DELETE | `/api/workspaces/{id}/messages` | Message history, or clear it (owner only) |
-| WS | `/ws/workspaces/{id}?token=…` | Live chat, presence, typing, AI streaming |
+| DELETE | `/api/workspaces/{id}/messages/{message}` | Delete a message (author or owner) |
+| GET / POST | `/api/workspaces/{id}/files` | List or create code files |
+| PATCH / DELETE | `/api/workspaces/{id}/files/{file}` | Rename or delete a file |
+| WS | `/ws/workspaces/{id}?token=…` | Chat, presence, typing, AI streaming, live editing |
 | GET | `/api/stats` | Usage and latency analytics |
 | GET | `/api/health` | Health check |
 
@@ -157,15 +176,18 @@ backend/
     schemas.py       Request and response models
     security.py      Password hashing, JWT, auth dependency
     ai.py            AI providers: Claude, Gemini, Ollama, offline assistant
-    realtime.py      WebSocket rooms and presence
-    routers/         auth, workspaces, chat (WebSocket), stats
+    realtime.py      WebSocket rooms, presence, kicking removed members
+    ratelimit.py     Per-user AI request limiter
+    collab.py        CRDT documents for the shared editor (pycrdt)
+    routers/         auth, workspaces, files, chat (WebSocket), stats
   tests/             pytest suite
 frontend/
   src/
     App.jsx          Auth gate and dashboard
     hooks/           useAuth, useWorkspaceSocket
     components/      Chat, charts, sidebar, auth screen and more
-    lib/             API client and formatting helpers
+    lib/             API client, code runner, formatting helpers
+    workers/         Web Worker that runs Python (Pyodide) and JavaScript
 docker-compose.yml
 .github/workflows/ci.yml
 ```
@@ -175,5 +197,7 @@ docker-compose.yml
 - [x] REST API with authentication and a database
 - [x] Real-time chat with AI streaming
 - [x] Tests, Docker and CI
-- [ ] Shared live code editor
-- [ ] Workspace invites and roles
+- [x] Shared live code editor
+- [x] Workspace invites and roles
+- [x] Run code in the browser
+- [ ] Deploy a public demo

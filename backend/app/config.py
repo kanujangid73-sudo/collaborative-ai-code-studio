@@ -36,6 +36,8 @@ class Settings:
     ai_model = os.getenv("AI_MODEL", "claude-opus-5-5")
     ai_effort = os.getenv("AI_EFFORT", "low")
     ai_history_messages = int(os.getenv("AI_HISTORY_MESSAGES", "20"))
+    # Per-user cap on AI replies, to protect free-tier quotas. 0 disables the limit.
+    ai_requests_per_hour = int(os.getenv("AI_REQUESTS_PER_HOUR", "20"))
 
     gemini_api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY") or ""
     gemini_enabled = ai_enabled and bool(gemini_api_key)

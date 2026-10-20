@@ -3,7 +3,8 @@ import Avatar from "./Avatar.jsx";
 
 const NAV = [
   { href: "#overview", label: "Overview", icon: "▦" },
-  { href: "#console", label: "Workspace chat", icon: "❯" },
+  { href: "#studio", label: "Code studio", icon: "❯" },
+  { href: "#analytics", label: "Analytics", icon: "◔" },
   { href: "#endpoints", label: "API & activity", icon: "⇄" },
   { href: "#about", label: "About", icon: "ⓘ" },
 ];
@@ -11,14 +12,16 @@ const NAV = [
 export default function Sidebar({ user, workspaces, activeId, onSelect, onCreate, onLogout, apiStatus }) {
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
+  const [isPrivate, setIsPrivate] = useState(false);
   const [error, setError] = useState("");
 
   async function create(e) {
     e.preventDefault();
     if (!name.trim()) return;
     try {
-      await onCreate(name.trim());
+      await onCreate(name.trim(), isPrivate);
       setName("");
+      setIsPrivate(false);
       setCreating(false);
       setError("");
     } catch (err) {
@@ -65,6 +68,10 @@ export default function Sidebar({ user, workspaces, activeId, onSelect, onCreate
               placeholder="Workspace name"
               onKeyDown={(e) => e.key === "Escape" && setCreating(false)}
             />
+            <label className="check-label">
+              <input type="checkbox" checked={isPrivate} onChange={(e) => setIsPrivate(e.target.checked)} />
+              Private (invite only)
+            </label>
             {error && <span className="field-error">{error}</span>}
           </form>
         )}
@@ -77,7 +84,7 @@ export default function Sidebar({ user, workspaces, activeId, onSelect, onCreate
                 onClick={() => onSelect(ws.id)}
                 aria-current={ws.id === activeId}
               >
-                <span className="hash" aria-hidden="true">#</span>
+                <span className="hash" aria-hidden="true">{ws.is_private ? "🔒" : "#"}</span>
                 <span className="ws-name">{ws.name}</span>
                 {ws.message_count > 0 && <span className="count">{ws.message_count}</span>}
               </button>

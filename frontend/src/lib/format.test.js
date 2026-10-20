@@ -36,3 +36,21 @@ describe("modelLabel", () => {
   it("formats Gemini model ids", () => expect(modelLabel("gemini-3.5-flash-lite")).toBe("Gemini 3.5 Flash Lite"));
   it("marks Ollama models as local", () => expect(modelLabel("qwen2.5-coder:1.5b")).toBe("qwen2.5-coder:1.5b · local"));
 });
+
+describe("base64", async () => {
+  const { toBase64, fromBase64 } = await import("./base64.js");
+  it("round-trips binary data", () => {
+    const bytes = new Uint8Array([0, 1, 2, 250, 255, 128]);
+    expect([...fromBase64(toBase64(bytes))]).toEqual([...bytes]);
+  });
+});
+
+describe("languages", async () => {
+  const { extensionOf, languageLabel } = await import("./languages.js");
+  it("detects extensions", () => {
+    expect(extensionOf("main.py")).toBe("py");
+    expect(extensionOf("Makefile")).toBe("");
+    expect(languageLabel("App.TSX")).toBe("TypeScript (TSX)");
+    expect(languageLabel("notes.txt")).toBe("Plain text");
+  });
+});

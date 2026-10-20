@@ -4,11 +4,13 @@ import ActivityLog from "./components/ActivityLog.jsx";
 import AuthScreen from "./components/AuthScreen.jsx";
 import { AvatarStack } from "./components/Avatar.jsx";
 import ChatConsole from "./components/ChatConsole.jsx";
+import CodeEditor from "./components/CodeEditor.jsx";
 import EndpointTable from "./components/EndpointTable.jsx";
 import IntentBreakdown from "./components/IntentBreakdown.jsx";
 import LatencyChart from "./components/LatencyChart.jsx";
 import Sidebar from "./components/Sidebar.jsx";
 import StatCard from "./components/StatCard.jsx";
+import WorkspaceSettings from "./components/WorkspaceSettings.jsx";
 import { API_URL } from "./config.js";
 import { useAuth } from "./hooks/useAuth.js";
 import { useWorkspaceSocket } from "./hooks/useWorkspaceSocket.js";
@@ -35,7 +37,11 @@ function Dashboard({ token, user, logout }) {
   const [stats, setStats] = useState(null);
   const [apiStatus, setApiStatus] = useState("checking");
   const [activity, setActivity] = useState([]);
+  const [files, setFiles] = useState([]);
   const presenceRef = useRef(null);
+  const editorApi = useRef(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [membersVersion, setMembersVersion] = useState(0);
 
   const log = useCallback((type, text) => {
     setActivity((items) => [{ id: crypto.randomUUID(), type, text, time: new Date() }, ...items].slice(0, 40));
@@ -60,7 +66,8 @@ function Dashboard({ token, user, logout }) {
     try {
       const list = await api("/api/workspaces", { token });
       setWorkspaces(list);
-      setActiveId((current) => current ?? list[0]?.id ?? null);
+      // Stay on the current workspace unless it disappeared (deleted, or access removed).
+      setActiveId((current) => (list.some((w) => w.id === current) ? current : list[0]?.id ?? null));
     } catch (err) {
       if (err.status === 401) logout();
     }
@@ -69,7 +76,11 @@ function Dashboard({ token, user, logout }) {
   useEffect(() => {
     refreshWorkspaces();
     refreshStats();
-    const timer = setInterval(refreshStats, POLL_MS);
+    // Polling also picks up workspaces you were invited to while not connected to them.
+    const timer = setInterval(() => {
+      refreshStats();
+      refreshWorkspaces();
+    }, POLL_MS);
     return () => clearInterval(timer);
   }, [refreshWorkspaces, refreshStats]);
 
@@ -103,12 +114,72 @@ function Dashboard({ token, user, logout }) {
         log("info", `${event.by} cleared the history`);
         refreshStats();
         refreshWorkspaces();
+      } else if (event.type === "workspace_updated") {
+        if (event.by !== user.username) log("info", `${event.by} updated the workspace settings`);
+        refreshWorkspaces();
+      } else if (event.type === "members_updated") {
+        setMembersVersion((v) => v + 1);
+      } else if (event.type === "workspace_deleted") {
+        log("error", `${event.by} deleted this workspace`);
+        setSettingsOpen(false);
+        refreshWorkspaces();
+      } else if (event.type === "message_deleted" && event.by !== user.username) {
+        log("info", `${event.by} deleted a message`);
+      } else if (event.type === "file_created") {
+        setFiles((list) => (list.some((f) => f.id === event.file.id) ? list : [...list, event.file]));
+        if (event.by !== user.username) log("info", `${event.by} created ${event.file.name}`);
+      } else if (event.type === "file_renamed") {
+        setFiles((list) => list.map((f) => (f.id === event.file.id ? event.file : f)));
+        if (event.by !== user.username) log("info", `${event.by} renamed a file to ${event.file.name}`);
+      } else if (event.type === "file_deleted") {
+        setFiles((list) => list.filter((f) => f.id !== event.file_id));
+        if (event.by !== user.username) log("info", `${event.by} deleted a file`);
       }
     },
     [log, user.username, refreshStats, refreshWorkspaces],
   );
 
-  const socket = useWorkspaceSocket({ workspaceId: activeId, token, onEvent: handleEvent, onUnauthorized: logout });
+  const handleForbidden = useCallback(() => {
+    log("error", "You no longer have access to this workspace");
+    setSettingsOpen(false);
+    refreshWorkspaces();
+  }, [log, refreshWorkspaces]);
+
+  const socket = useWorkspaceSocket({
+    workspaceId: activeId,
+    token,
+    onEvent: handleEvent,
+    onUnauthorized: logout,
+    onForbidden: handleForbidden,
+  });
+
+  useEffect(() => {
+    if (!activeId) return undefined;
+    let cancelled = false;
+    setFiles([]);
+    api(`/api/workspaces/${activeId}/files`, { token })
+      .then((list) => !cancelled && setFiles(list))
+      .catch((err) => !cancelled && log("error", err.message));
+    return () => {
+      cancelled = true;
+    };
+  }, [activeId, token, log]);
+
+  const filesUrl = `/api/workspaces/${activeId}/files`;
+  const createFile = async (name) => {
+    const file = await api(filesUrl, { token, method: "POST", body: { name } });
+    setFiles((list) => (list.some((f) => f.id === file.id) ? list : [...list, file]));
+    log("success", `Created ${file.name}`);
+    return file;
+  };
+  const renameFile = async (id, name) => {
+    const file = await api(`${filesUrl}/${id}`, { token, method: "PATCH", body: { name } });
+    setFiles((list) => list.map((f) => (f.id === id ? file : f)));
+  };
+  const deleteFile = async (id) => {
+    await api(`${filesUrl}/${id}`, { token, method: "DELETE" });
+    setFiles((list) => list.filter((f) => f.id !== id));
+  };
 
   useEffect(() => {
     presenceRef.current = null;
@@ -117,8 +188,25 @@ function Dashboard({ token, user, logout }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeId]);
 
-  async function createWorkspace(name) {
-    const ws = await api("/api/workspaces", { token, method: "POST", body: { name } });
+  async function deleteMessage(id) {
+    try {
+      await api(`/api/workspaces/${activeId}/messages/${id}`, { token, method: "DELETE" });
+    } catch (err) {
+      log("error", err.message);
+    }
+  }
+
+  function insertCode(text) {
+    if (editorApi.current?.insert(text)) {
+      log("success", "Inserted code into the editor");
+      document.getElementById("studio")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    } else {
+      log("error", "Open a file in the editor first");
+    }
+  }
+
+  async function createWorkspace(name, isPrivate = false) {
+    const ws = await api("/api/workspaces", { token, method: "POST", body: { name, is_private: isPrivate } });
     setWorkspaces((list) => [...list, ws]);
     setActiveId(ws.id);
     log("success", `Created workspace #${ws.name}`);
@@ -197,18 +285,35 @@ function Dashboard({ token, user, logout }) {
           />
         </section>
 
-        <section className="grid-main" id="console">
-          <ChatConsole
+        <section className="studio" id="studio">
+          <CodeEditor
             workspace={activeWorkspace}
+            files={files}
             user={user}
             socket={socket}
-            canClear={Boolean(activeWorkspace) && [null, user.id].includes(activeWorkspace.owner_id)}
-            onClear={clearHistory}
+            onCreate={createFile}
+            onRename={renameFile}
+            onDelete={deleteFile}
+            apiRef={editorApi}
           />
-          <div className="stack">
-            <LatencyChart data={stats?.recent_latencies ?? []} />
-            <IntentBreakdown intents={stats?.intents ?? {}} />
+          <div id="console">
+            <ChatConsole
+              workspace={activeWorkspace}
+              user={user}
+              socket={socket}
+              canClear={Boolean(activeWorkspace) && [null, user.id].includes(activeWorkspace.owner_id)}
+              onClear={clearHistory}
+              onSettings={() => setSettingsOpen(true)}
+              canModerate={activeWorkspace?.role === "owner"}
+              onDeleteMessage={deleteMessage}
+              onInsertCode={insertCode}
+            />
           </div>
+        </section>
+
+        <section className="grid-charts" id="analytics">
+          <LatencyChart data={stats?.recent_latencies ?? []} />
+          <IntentBreakdown intents={stats?.intents ?? {}} />
         </section>
 
         <section className="grid-split" id="endpoints">
@@ -217,6 +322,28 @@ function Dashboard({ token, user, logout }) {
         </section>
 
         <AboutProject />
+
+        {settingsOpen && activeWorkspace && (
+          <WorkspaceSettings
+            key={activeWorkspace.id}
+            workspace={activeWorkspace}
+            user={user}
+            token={token}
+            refreshKey={membersVersion}
+            onClose={() => setSettingsOpen(false)}
+            onChanged={refreshWorkspaces}
+            onLeft={() => {
+              setSettingsOpen(false);
+              log("info", `You left #${activeWorkspace.name}`);
+              refreshWorkspaces();
+            }}
+            onDeleted={() => {
+              setSettingsOpen(false);
+              log("success", `Deleted #${activeWorkspace.name}`);
+              refreshWorkspaces();
+            }}
+          />
+        )}
 
         <footer className="page-footer">
           <span>CodeTogether · React, FastAPI, WebSockets &amp; Claude</span>

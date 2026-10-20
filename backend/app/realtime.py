@@ -37,6 +37,29 @@ class ConnectionManager:
             if isinstance(result, Exception):
                 self.rooms.get(workspace_id, {}).pop(ws, None)
 
+    async def kick(self, workspace_id: int, username: str, code: int = 4403) -> None:
+        """Disconnect a user from a room, e.g. after losing access to a private workspace."""
+        room = self.rooms.get(workspace_id, {})
+        for ws, name in list(room.items()):
+            if name == username:
+                room.pop(ws, None)
+                await self._close(ws, code)
+        if room:
+            await self.broadcast_presence(workspace_id)
+        else:
+            self.rooms.pop(workspace_id, None)
+
+    async def close_room(self, workspace_id: int, code: int = 4404) -> None:
+        for ws in list(self.rooms.pop(workspace_id, {})):
+            await self._close(ws, code)
+
+    @staticmethod
+    async def _close(ws: WebSocket, code: int) -> None:
+        try:
+            await ws.close(code=code)
+        except Exception:
+            pass  # already closed
+
     async def broadcast_presence(self, workspace_id: int) -> None:
         await self.broadcast(workspace_id, {"type": "presence", "users": self.online(workspace_id)})
 

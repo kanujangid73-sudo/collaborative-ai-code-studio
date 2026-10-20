@@ -11,6 +11,7 @@ from sqlalchemy.pool import StaticPool
 from sqlmodel import SQLModel, create_engine
 
 from app import database
+from app.collab import store
 from app.routers import chat
 
 # One shared in-memory database for the whole app during tests.
@@ -24,6 +25,8 @@ from app.main import app  # noqa: E402
 @pytest.fixture()
 def client():
     SQLModel.metadata.drop_all(test_engine)
+    store.docs.clear()  # the in-memory document cache must not outlive the test database
+    store.dirty.clear()
     with TestClient(app) as c:
         yield c
 

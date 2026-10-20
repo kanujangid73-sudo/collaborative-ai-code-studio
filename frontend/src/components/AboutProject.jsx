@@ -2,6 +2,14 @@ import React from "react";
 
 const FEATURES = [
   {
+    title: "Shared code editor",
+    text: "Google-Docs-style co-editing built on Yjs CRDTs and CodeMirror, with named live cursors, multiple files and syntax highlighting.",
+  },
+  {
+    title: "Run code in the browser",
+    text: "Python (Pyodide/WebAssembly) and JavaScript run in a Web Worker with live output, timeouts, and one-click \"Ask AI to fix\" on errors.",
+  },
+  {
     title: "AI pair programmer",
     text: "Answers stream into the shared chat as Markdown with highlighted code, from Claude, Google Gemini's free tier, or a local model via Ollama.",
   },
@@ -11,7 +19,7 @@ const FEATURES = [
   },
   {
     title: "Accounts & workspaces",
-    text: "JWT authentication with hashed passwords, and shared workspaces any teammate can create.",
+    text: "JWT authentication, public or invite-only workspaces, owner/member roles, and per-user AI usage limits.",
   },
   {
     title: "Persistent history",
@@ -28,8 +36,8 @@ const FEATURES = [
 ];
 
 const STACK = [
-  "React 18", "Vite 6", "WebSockets", "react-markdown", "highlight.js", "Vitest",
-  "Python 3", "FastAPI", "SQLModel", "SQLite", "JWT", "Claude API", "Gemini API", "Ollama", "Pytest",
+  "React 18", "Vite 6", "CodeMirror 6", "Yjs (CRDT)", "Pyodide (WebAssembly)", "Web Workers", "WebSockets", "react-markdown", "Vitest",
+  "Python 3", "FastAPI", "SQLModel", "SQLite", "pycrdt", "JWT", "Claude API", "Gemini API", "Ollama", "Pytest",
   "Docker", "GitHub Actions",
 ];
 
@@ -49,8 +57,9 @@ export default function AboutProject() {
         <h2>A shared workspace where developers and AI build code together.</h2>
         <p className="muted">
           CodeTogether is a full-stack collaborative coding studio. Teammates sign in, join shared
-          workspaces and talk in real time, while an AI pair programmer answers questions with
-          working code, streamed live to everyone in the room. It runs on Claude, on Google
+          workspaces, write code together in a live editor and talk in real time, while an AI pair
+          programmer reviews selected code and answers with working examples, streamed live to
+          everyone in the room. It runs on Claude, on Google
           Gemini's free tier, on a local model through Ollama, or on a built-in offline assistant,
           so the app always works and can run entirely for free.
         </p>
@@ -90,8 +99,10 @@ export default function AboutProject() {
             <li className="done">REST API, auth &amp; database</li>
             <li className="done">Real-time chat with AI streaming</li>
             <li className="done">Tests, Docker &amp; CI</li>
-            <li>Shared live code editor</li>
-            <li>Workspace invites &amp; roles</li>
+            <li className="done">Shared live code editor</li>
+            <li className="done">Workspace invites &amp; roles</li>
+            <li className="done">Run code in the browser</li>
+            <li>Public demo deployment</li>
           </ul>
         </div>
       </div>

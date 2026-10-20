@@ -9,3 +9,4 @@ __pycache__/
 *.log
 *.db
 .pytest_cache/
+frontend/public/pyodide/

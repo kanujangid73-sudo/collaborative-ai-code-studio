@@ -5,9 +5,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .ai import assistant
+from .collab import store
 from .config import settings
 from .database import init_db
-from .routers import auth, chat, stats, workspaces
+from .routers import auth, chat, files, stats, workspaces
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s:     %(message)s")
 logger = logging.getLogger("codetogether")
@@ -18,7 +19,9 @@ async def lifespan(_: FastAPI):
     init_db()
     await assistant.refresh(force=True)
     logger.info("AI mode: %s (%s)", assistant.mode, assistant.model)
+    store.start()
     yield
+    await store.stop()
 
 
 app = FastAPI(
@@ -39,6 +42,7 @@ app.add_middleware(
 
 app.include_router(auth.router)
 app.include_router(workspaces.router)
+app.include_router(files.router)
 app.include_router(chat.router)
 app.include_router(stats.router)
 
