@@ -1,4 +1,6 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+
+import { API_URL } from "../config.js";
 
 const HIGHLIGHTS = [
   ["Real-time workspaces", "Chat with your team over WebSockets, with presence and typing indicators."],
@@ -6,7 +8,39 @@ const HIGHLIGHTS = [
   ["Live analytics", "Response times, topics and activity, updated as you work."],
 ];
 
+// Free hosting puts the API to sleep when idle, and the first request wakes it (up to a minute).
+// Ping it on load so visitors see why they're waiting instead of a silent spinner.
+function useServerStatus() {
+  const [status, setStatus] = useState("checking"); // checking | waking | ready | down
+  useEffect(() => {
+    let cancelled = false;
+    const slow = setTimeout(() => !cancelled && setStatus((s) => (s === "checking" ? "waking" : s)), 2500);
+    const deadline = Date.now() + 120_000;
+    async function ping() {
+      try {
+        const res = await fetch(`${API_URL}/api/health`);
+        if (res.ok) {
+          if (!cancelled) setStatus("ready");
+          return;
+        }
+      } catch {
+        // not up yet
+      }
+      if (cancelled) return;
+      if (Date.now() > deadline) setStatus("down");
+      else setTimeout(ping, 4000);
+    }
+    ping();
+    return () => {
+      cancelled = true;
+      clearTimeout(slow);
+    };
+  }, []);
+  return status;
+}
+
 export default function AuthScreen({ onSubmit }) {
+  const server = useServerStatus();
   const [mode, setMode] = useState("login");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -58,7 +92,7 @@ export default function AuthScreen({ onSubmit }) {
             </li>
           ))}
         </ul>
-        <p className="auth-stack">REACT · FASTAPI · WEBSOCKETS · SQLITE · CLAUDE</p>
+        <p className="auth-stack">REACT · FASTAPI · WEBSOCKETS · YJS · POSTGRES</p>
       </section>
 
       <section className="auth-panel">
@@ -115,6 +149,16 @@ export default function AuthScreen({ onSubmit }) {
             />
           </label>
 
+          {server === "waking" && (
+            <div className="alert warn" role="status">
+              Waking up the server. Free hosting sleeps when idle, so this can take up to a minute.
+            </div>
+          )}
+          {server === "down" && (
+            <div className="alert" role="alert">
+              The server isn't responding at {API_URL}. Please try again later.
+            </div>
+          )}
           {error && <div className="alert" role="alert">{error}</div>}
 
           <button type="submit" className="button-primary full" disabled={busy}>

@@ -17,16 +17,17 @@ A full-stack, real-time workspace where developers and an AI pair programmer bui
 - **Accounts and workspaces.** Sign up and log in with JWT tokens and PBKDF2-hashed passwords. Workspaces can be public or **private (invite only)**, with owner and member roles. Owners can rename, invite, remove members and delete; members can leave. Removed members are disconnected right away.
 - **Chat tools.** Copy or **insert AI code blocks straight into the editor**, regenerate the last AI reply, and delete your own messages (owners can moderate).
 - **AI usage limits.** A per-user hourly cap on AI replies (20 by default) protects free-tier quotas, with the remaining count shown in the chat.
-- **Persistent storage.** Users, workspaces and messages are stored in SQLite through SQLModel.
+- **Persistent storage.** Users, workspaces, messages and files are stored through SQLModel: SQLite for local development, Postgres in production, with schema changes managed by Alembic migrations.
 - **Live analytics dashboard.** Shows AI response times as a bar chart, detected topics, online users, message counts and server uptime.
-- **Engineering setup.** Pytest and Vitest test suites, Docker Compose, and GitHub Actions CI on every push.
+- **Engineering setup.** Pytest and Vitest test suites (the backend suite runs on both SQLite and Postgres), Docker Compose, GitHub Actions CI on every push, and a one-click Render Blueprint for free deployment.
 
 ## Architecture
 
 ```
 ┌──────────────┐  REST (JWT)   ┌──────────────────┐   SQLModel   ┌──────────┐
-│  React SPA   │ ────────────▶ │     FastAPI      │ ───────────▶ │  SQLite  │
-│  Vite :5173  │ ◀──────────── │  Uvicorn :8000   │              └──────────┘
+│  React SPA   │ ────────────▶ │     FastAPI      │ ───────────▶ │ Postgres │
+│  Vite :5173  │ ◀──────────── │  Uvicorn :8000   │              │ / SQLite │
+│              │               │                  │              └──────────┘
 │              │   WebSocket   │                  │   streaming  ┌──────────┐
 │              │ ◀───────────▶ │ rooms + presence │ ───────────▶ │ Claude / │
 └──────────────┘               └──────────────────┘              │ Gemini / │
@@ -39,7 +40,7 @@ When someone types in the editor:
 1. The browser's Yjs document produces a small binary update, which is sent as `doc_update` over the workspace WebSocket.
 2. The server merges it into its copy of the file (pycrdt) and relays it to everyone else in the room.
 3. Cursor positions travel the same way as `awareness` updates.
-4. The merged document is saved to SQLite every few seconds, so a late joiner gets the latest version.
+4. The merged document is saved to the database every few seconds, so a late joiner gets the latest version.
 
 When someone sends a message in a workspace:
 
@@ -53,9 +54,9 @@ When someone sends a message in a workspace:
 | Layer | Tools |
 |---|---|
 | Frontend | React 18, Vite 6, CodeMirror 6, Yjs, react-markdown, highlight.js, Vitest |
-| Backend | Python, FastAPI, SQLModel/SQLAlchemy, SQLite, pycrdt, PyJWT, WebSockets |
+| Backend | Python, FastAPI, SQLModel/SQLAlchemy, Alembic, PostgreSQL / SQLite, pycrdt, PyJWT, WebSockets |
 | AI | Anthropic Python SDK (Claude), Gemini REST API, Ollama, offline fallback |
-| DevOps | Docker, Docker Compose, nginx, GitHub Actions |
+| DevOps | Docker, Docker Compose, nginx, GitHub Actions, Render, Neon |
 
 ## Getting started
 
@@ -115,7 +116,11 @@ On a machine with 16 GB+ RAM or a GPU, a larger model gives better answers, for 
 docker compose up --build
 ```
 
-The frontend is served at http://localhost:5173 and the backend at http://localhost:8000.
+The frontend is served at http://localhost:5173 and the backend at http://localhost:8000, with a Postgres database in its own container, as in production.
+
+## Deploy
+
+CodeTogether can be deployed for free: Render hosts the API and the frontend, and Neon hosts the Postgres database. [`render.yaml`](render.yaml) creates both services in one step. See **[docs/DEPLOY.md](docs/DEPLOY.md)** for the step-by-step guide.
 
 ## Configuration
 
@@ -123,7 +128,8 @@ Set these in `backend/.env` (see [`backend/.env.example`](backend/.env.example))
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `SECRET_KEY` | random per start | Signs login tokens. **Set it in production**, otherwise everyone is logged out on restart. |
+| `APP_ENV` | `development` | `production` refuses to start without `SECRET_KEY`, a Postgres `DATABASE_URL` and `CORS_ORIGINS`, and stops allowing localhost origins |
+| `SECRET_KEY` | random per start | Signs login tokens. **Required in production**, otherwise everyone is logged out on restart. |
 | `ANTHROPIC_API_KEY` | none | Turns on Claude replies (paid). Takes priority over Ollama. |
 | `GEMINI_API_KEY` | none | Turns on Gemini replies (free tier). Used when there's no Anthropic key. |
 | `GEMINI_MODEL` | `gemini-3.8-flash` | Gemini model used for replies |
@@ -133,15 +139,29 @@ Set these in `backend/.env` (see [`backend/.env.example`](backend/.env.example))
 | `AI_REQUESTS_PER_HOUR` | `20` | AI replies each user may request per hour (`0` = unlimited) |
 | `AI_MODEL` | `claude-opus-5-5` | Claude model used for replies |
 | `AI_EFFORT` | `low` | Reasoning effort (`low`, `medium`, `high`) |
-| `DATABASE_URL` | `sqlite:///backend/codetogether.db` | Any SQLAlchemy database URL |
-| `CORS_ORIGINS` | none | Extra allowed frontend origins, comma-separated |
+| `DATABASE_URL` | `sqlite:///backend/codetogether.db` | SQLite or Postgres URL. `postgres://` and `postgresql://` URLs (as given by Neon, Supabase or Render) work as-is |
+| `CORS_ORIGINS` | none | Allowed frontend origins, comma-separated. In development any localhost port is also allowed |
 
 For the frontend, set `VITE_API_URL` to point at a deployed backend.
+
+### Database migrations
+
+The schema is managed with Alembic, and the backend applies pending migrations when it starts. After changing `backend/app/models.py`:
+
+```bash
+cd backend
+alembic revision --autogenerate -m "describe the change"
+```
+
+Review the generated file in `app/migrations/versions/` and commit it. A test fails if the models and migrations drift apart.
 
 ## Tests
 
 ```bash
-cd backend && pytest        # 41 API, auth, permissions, WebSocket, collaboration and AI tests
+cd backend && pytest        # 46 API, auth, permissions, WebSocket, collaboration, AI and database tests
+
+# Run the same suite against Postgres (CI does this on every push):
+TEST_DATABASE_URL=postgresql://user:pass@localhost:5432/test_db pytest
 cd frontend && npm test     # utility tests with Vitest
 ```
 
@@ -171,7 +191,8 @@ backend/
   app/
     main.py          FastAPI app, CORS, router registration
     config.py        Settings from environment variables
-    database.py      Engine, session, default workspace seeding
+    database.py      Engine, migrations on startup, default workspace seeding
+    migrations/      Alembic migrations
     models.py        SQLModel tables: User, Workspace, Message
     schemas.py       Request and response models
     security.py      Password hashing, JWT, auth dependency
@@ -188,6 +209,8 @@ frontend/
     components/      Chat, charts, sidebar, auth screen and more
     lib/             API client, code runner, formatting helpers
     workers/         Web Worker that runs Python (Pyodide) and JavaScript
+docs/DEPLOY.md       Free deployment guide (Render + Neon)
+render.yaml          Render Blueprint
 docker-compose.yml
 .github/workflows/ci.yml
 ```
@@ -200,4 +223,5 @@ docker-compose.yml
 - [x] Shared live code editor
 - [x] Workspace invites and roles
 - [x] Run code in the browser
+- [x] Production config, Postgres and migrations
 - [ ] Deploy a public demo

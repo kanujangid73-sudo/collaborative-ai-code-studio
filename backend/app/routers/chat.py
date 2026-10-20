@@ -26,10 +26,10 @@ from collections import defaultdict
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from sqlmodel import Session, select
 
+from .. import database
 from ..ai import HistoryItem, assistant, detect_intent
 from ..collab import store
 from ..config import settings
-from ..database import engine
 from ..models import CodeFile, Message, Workspace
 from ..ratelimit import SlidingWindowLimiter
 from ..realtime import manager
@@ -61,7 +61,7 @@ def with_code(content: str, code: dict) -> str:
 def file_in_workspace(file_id, workspace_id: int) -> bool:
     if not isinstance(file_id, int):
         return False
-    with Session(engine) as session:
+    with Session(database.engine) as session:
         file = session.get(CodeFile, file_id)
         return bool(file and file.workspace_id == workspace_id)
 
@@ -106,7 +106,7 @@ def start_ai_reply(workspace_id: int, intent: str) -> None:
 
 def pop_last_ai_reply(workspace_id: int) -> tuple[int, str] | None:
     """Delete the newest message if it is an AI reply; return (its id, the intent to reuse)."""
-    with Session(engine) as session:
+    with Session(database.engine) as session:
         last = session.exec(
             select(Message).where(Message.workspace_id == workspace_id).order_by(Message.id.desc())
         ).first()
@@ -119,7 +119,7 @@ def pop_last_ai_reply(workspace_id: int) -> tuple[int, str] | None:
 
 
 def load_history(workspace_id: int) -> list[HistoryItem]:
-    with Session(engine) as session:
+    with Session(database.engine) as session:
         rows = session.exec(
             select(Message)
             .where(Message.workspace_id == workspace_id)
@@ -145,7 +145,7 @@ async def run_ai_reply(workspace_id: int, intent: str) -> None:
             parts.append("\n\n_Something went wrong while generating this reply._")
 
         latency_ms = round((time.perf_counter() - started) * 1000)
-        with Session(engine) as session:
+        with Session(database.engine) as session:
             msg = Message(
                 workspace_id=workspace_id,
                 role="assistant",
@@ -163,7 +163,7 @@ async def run_ai_reply(workspace_id: int, intent: str) -> None:
 
 @router.websocket("/ws/workspaces/{workspace_id}")
 async def workspace_socket(websocket: WebSocket, workspace_id: int, token: str = "") -> None:
-    with Session(engine) as session:
+    with Session(database.engine) as session:
         user = user_from_token(token, session)
         workspace = session.get(Workspace, workspace_id)
         username = user.username if user else None
@@ -222,7 +222,7 @@ async def workspace_socket(websocket: WebSocket, workspace_id: int, token: str =
                 intent = detect_intent(content)
                 if isinstance(data.get("code"), dict):
                     content = with_code(content, data["code"])
-                with Session(engine) as session:
+                with Session(database.engine) as session:
                     msg = Message(
                         workspace_id=workspace_id, user_id=user_id, role="user", content=content, intent=intent
                     )

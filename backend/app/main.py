@@ -16,6 +16,7 @@ logger = logging.getLogger("codetogether")
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    settings.check()
     init_db()
     await assistant.refresh(force=True)
     logger.info("AI mode: %s (%s)", assistant.mode, assistant.model)
@@ -34,7 +35,8 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
-    allow_origin_regex=r"http://(localhost|127\.0\.0\.1)(:\d+)?",
+    # Any local dev server port, outside production.
+    allow_origin_regex=None if settings.is_production else r"http://(localhost|127\.0\.0\.1)(:\d+)?",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

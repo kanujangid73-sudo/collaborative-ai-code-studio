@@ -14,19 +14,39 @@ def _bool(name: str, default: bool) -> bool:
     return os.getenv(name, str(default)).strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _database_url(url: str) -> str:
+    """Use the psycopg 3 driver for Postgres URLs, as given by Neon, Supabase or Render."""
+    for prefix in ("postgres://", "postgresql://"):
+        if url.startswith(prefix):
+            return "postgresql+psycopg://" + url[len(prefix) :]
+    return url
+
+
+def _origin(value: str) -> str:
+    """Normalize an origin: add https:// when the scheme is missing and drop any trailing slash."""
+    value = value.strip().rstrip("/")
+    return value if "://" in value else f"https://{value}"
+
+
 class Settings:
     app_name = "CodeTogether API"
     version = "1.0.0"
 
-    database_url = os.getenv("DATABASE_URL", f"sqlite:///{BASE_DIR / 'codetogether.db'}")
+    # "production" turns on the checks in check() and stops allowing localhost origins.
+    environment = os.getenv("APP_ENV", "development").strip().lower()
+    is_production = environment == "production"
+
+    # SQLite by default; set a Postgres URL (e.g. from Neon) for a persistent hosted database.
+    database_url = _database_url(os.getenv("DATABASE_URL", f"sqlite:///{BASE_DIR / 'codetogether.db'}"))
 
     # A random key is generated when none is configured, so tokens reset on restart.
-    # Set SECRET_KEY in production.
+    # SECRET_KEY is required in production.
     secret_key = os.getenv("SECRET_KEY") or secrets.token_urlsafe(32)
     token_expire_minutes = int(os.getenv("TOKEN_EXPIRE_MINUTES", str(60 * 24 * 7)))
 
-    # Comma-separated list of extra allowed origins (e.g. a deployed frontend URL).
-    cors_origins = [o.strip() for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
+    # Comma-separated list of allowed frontend origins (e.g. https://codetogether.onrender.com).
+    # In development, any localhost port is also allowed.
+    cors_origins = [_origin(o) for o in os.getenv("CORS_ORIGINS", "").split(",") if o.strip()]
 
     # AI provider, in order of preference: Claude (paid, needs an API key), Gemini (free tier,
     # needs a Google API key), Ollama (free, local), then the built-in offline assistant.
@@ -49,6 +69,20 @@ class Settings:
     ollama_model = os.getenv("OLLAMA_MODEL", "qwen2.5-coder:1.5b")
     # Small local models on a CPU slow down a lot with long prompts, so send less history.
     ollama_history_messages = int(os.getenv("OLLAMA_HISTORY_MESSAGES", "8"))
+
+    def check(self) -> None:
+        """Refuse to start a production server with settings that would lose data or leak access."""
+        if not self.is_production:
+            return
+        problems = []
+        if len(os.getenv("SECRET_KEY", "")) < 32:
+            problems.append("SECRET_KEY must be set to a random string of at least 32 characters")
+        if self.database_url.startswith("sqlite"):
+            problems.append("DATABASE_URL must point to Postgres (SQLite files are wiped on most free hosts)")
+        if not self.cors_origins:
+            problems.append("CORS_ORIGINS must list the frontend URL")
+        if problems:
+            raise RuntimeError("Invalid production settings:\n- " + "\n- ".join(problems))
 
 
 settings = Settings()
