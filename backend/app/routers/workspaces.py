@@ -214,7 +214,7 @@ async def clear_messages(
     workspace_id: int, session: Session = Depends(get_session), user: User = Depends(get_current_user)
 ) -> dict[str, int]:
     workspace = require_access(workspace_id, session, user)
-    if workspace.owner_id not in (None, user.id):
+    if workspace.owner_id != user.id:  # ownerless shared workspaces can't be cleared
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the workspace owner can clear its history")
     result = session.exec(delete(Message).where(Message.workspace_id == workspace_id))
     session.commit()

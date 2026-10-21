@@ -70,6 +70,10 @@ class Settings:
     # Small local models on a CPU slow down a lot with long prompts, so send less history.
     ollama_history_messages = int(os.getenv("OLLAMA_HISTORY_MESSAGES", "8"))
 
+    # One-click demo accounts: how long they last, and how many each IP address may create per hour.
+    guest_ttl_hours = int(os.getenv("GUEST_TTL_HOURS", "24"))
+    demo_logins_per_hour = int(os.getenv("DEMO_LOGINS_PER_HOUR", "10"))
+
     def check(self) -> None:
         """Refuse to start a production server with settings that would lose data or leak access."""
         if not self.is_production:

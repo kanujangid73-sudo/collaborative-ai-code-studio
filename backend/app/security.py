@@ -35,7 +35,9 @@ def verify_password(password: str, stored: str) -> bool:
 
 
 def create_token(user: User) -> str:
-    expires = datetime.now(timezone.utc) + timedelta(minutes=settings.token_expire_minutes)
+    # Guest tokens end when the guest account is deleted.
+    minutes = settings.guest_ttl_hours * 60 if user.is_guest else settings.token_expire_minutes
+    expires = datetime.now(timezone.utc) + timedelta(minutes=minutes)
     payload = {"sub": str(user.id), "name": user.username, "exp": expires}
     return jwt.encode(payload, settings.secret_key, algorithm=ALGORITHM)
 

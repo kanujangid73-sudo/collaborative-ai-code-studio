@@ -68,7 +68,16 @@ This also emails you if the site goes down. Render's free plan includes 750 hour
 
 ## Updating the site
 
-Push to `main`. Render rebuilds both services automatically. Database changes ship as Alembic migrations and run on startup:
+Push to `main`. When the tests pass, GitHub Actions asks Render to redeploy the parts that changed: the API when `backend/` changes, the frontend when `frontend/` changes. This works through Render **deploy hooks**, so Render doesn't need access to your GitHub account. Set it up once:
+
+1. In Render, open **codetogether-api → Settings**, find **Deploy Hook**, and copy the URL. Do the same for **codetogether-web**.
+2. In GitHub, open the repository's **Settings → Secrets and variables → Actions → New repository secret** and add:
+   - `RENDER_DEPLOY_HOOK_API` with the API's hook URL
+   - `RENDER_DEPLOY_HOOK_WEB` with the frontend's hook URL
+
+Treat the hook URLs like passwords: anyone with one can trigger deploys. Without the secrets, the deploy step is skipped and you deploy with **Manual Deploy** in Render.
+
+Database changes ship as Alembic migrations and run on startup:
 
 ```bash
 cd backend

@@ -1,12 +1,16 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlmodel import Session, func, select
 
+from ..config import settings
 from ..database import get_session
+from ..demo import create_guest, purge_expired_guests
 from ..models import User
 from ..schemas import Credentials, TokenOut, UserOut
+from ..ratelimit import SlidingWindowLimiter
 from ..security import create_token, get_current_user, hash_password, verify_password
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+demo_limiter = SlidingWindowLimiter(settings.demo_logins_per_hour)
 
 
 @router.post("/register", response_model=TokenOut, status_code=status.HTTP_201_CREATED)
@@ -27,6 +31,16 @@ def login(data: Credentials, session: Session = Depends(get_session)) -> TokenOu
     if not user or not verify_password(data.password, user.password_hash):
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Wrong username or password")
     return TokenOut(access_token=create_token(user), user=UserOut.of(user))
+
+
+@router.post("/demo", response_model=TokenOut, status_code=status.HTTP_201_CREATED)
+def demo(request: Request, session: Session = Depends(get_session)) -> TokenOut:
+    """Create a temporary guest account with a sample workspace. No sign-up needed."""
+    if not demo_limiter.hit(request.client.host if request.client else "unknown"):
+        raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Too many demo accounts from your network. Try again later.")
+    purge_expired_guests(session)
+    user, workspace = create_guest(session)
+    return TokenOut(access_token=create_token(user), user=UserOut.of(user), workspace_id=workspace.id)
 
 
 @router.get("/me", response_model=UserOut)

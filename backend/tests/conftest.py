@@ -15,6 +15,7 @@ from sqlmodel import SQLModel, create_engine
 
 from app import database
 from app.collab import store
+from app.routers.auth import demo_limiter
 
 if TEST_DATABASE_URL:
     test_engine = database.engine
@@ -33,6 +34,7 @@ def client():
         conn.execute(text("DROP TABLE IF EXISTS alembic_version"))  # so startup migrates from scratch
     store.docs.clear()  # the in-memory document cache must not outlive the test database
     store.dirty.clear()
+    demo_limiter.hits.clear()
     with TestClient(app) as c:
         yield c
 

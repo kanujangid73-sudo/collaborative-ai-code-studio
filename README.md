@@ -13,6 +13,7 @@ A full-stack, real-time workspace where developers and an AI pair programmer bui
 
 ## Features
 
+- **One-click demo.** **Try the demo** on the login screen creates a temporary guest account with a private sandbox: a guided README, a Python file with a bug to fix with AI, and a JavaScript file. Guests are rate-limited per IP address and cleaned up after 24 hours.
 - **Shared code editor.** Google-Docs-style co-editing with CodeMirror 6 and Yjs CRDTs. Several people can type in the same file at once without conflicts, see each other's named cursors, and manage multiple files with syntax highlighting. The server merges edits with pycrdt and saves them to the database.
 - **Run code in the browser.** Press **▶ Run** to execute Python (via Pyodide, CPython compiled to WebAssembly) or JavaScript in a Web Worker, with live output, a timeout, and a Stop button. When it fails, **Ask AI to fix** sends the error and the code to the AI.
 - **Ask AI about code.** Select code (or use the whole file), press **Ask AI** or `Ctrl+Enter`, and the snippet goes to the AI together with your question. The answer appears in the shared chat.
@@ -162,7 +163,7 @@ Review the generated file in `app/migrations/versions/` and commit it. A test fa
 ## Tests
 
 ```bash
-cd backend && pytest        # 46 API, auth, permissions, WebSocket, collaboration, AI and database tests
+cd backend && pytest        # 51 API, auth, demo, permissions, WebSocket, collaboration, AI and database tests
 
 # Run the same suite against Postgres (CI does this on every push):
 TEST_DATABASE_URL=postgresql://user:pass@localhost:5432/test_db pytest
@@ -175,6 +176,7 @@ cd frontend && npm test     # utility tests with Vitest
 |---|---|---|
 | POST | `/api/auth/register` | Create an account and receive a JWT |
 | POST | `/api/auth/login` | Log in and receive a JWT |
+| POST | `/api/auth/demo` | Create a temporary guest account with a sample workspace |
 | GET | `/api/auth/me` | Current user |
 | GET / POST | `/api/workspaces` | List visible workspaces, or create one (optionally private) |
 | PATCH / DELETE | `/api/workspaces/{id}` | Rename, describe, make private, or delete (owner only) |
@@ -196,6 +198,7 @@ backend/
     main.py          FastAPI app, CORS, router registration
     config.py        Settings from environment variables
     database.py      Engine, migrations on startup, default workspace seeding
+    demo.py          Guest accounts for the one-click demo, and their cleanup
     migrations/      Alembic migrations
     models.py        SQLModel tables: User, Workspace, Message
     schemas.py       Request and response models

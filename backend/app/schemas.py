@@ -13,17 +13,19 @@ class Credentials(BaseModel):
 class UserOut(BaseModel):
     id: int
     username: str
+    is_guest: bool = False
     created_at: datetime
 
     @classmethod
     def of(cls, user: User) -> "UserOut":
-        return cls(id=user.id, username=user.username, created_at=user.created_at)
+        return cls(id=user.id, username=user.username, is_guest=user.is_guest, created_at=user.created_at)
 
 
 class TokenOut(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: UserOut
+    workspace_id: int | None = None  # where to open the app first (the demo workspace for guests)
 
 
 class WorkspaceIn(BaseModel):

@@ -11,6 +11,7 @@ class User(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     username: str = Field(index=True, unique=True, max_length=32)
     password_hash: str
+    is_guest: bool = False  # temporary demo account, deleted after GUEST_TTL_HOURS
     created_at: datetime = Field(default_factory=utcnow)
 
 

@@ -1,6 +1,7 @@
 import pytest
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
+from alembic.script import ScriptDirectory
 from sqlalchemy import inspect, text
 from sqlmodel import SQLModel
 
@@ -56,6 +57,8 @@ def test_legacy_database_is_upgraded(tmp_path, monkeypatch):
     with engine.connect() as conn:
         assert "is_private" in {c["name"] for c in inspect(conn).get_columns("workspace")}
         assert inspect(conn).has_table("codefile")
-        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == database.BASELINE_REVISION
+        assert "is_guest" in {c["name"] for c in inspect(conn).get_columns("user")}
+        head = ScriptDirectory.from_config(database.alembic_config()).get_current_head()
+        assert conn.execute(text("SELECT version_num FROM alembic_version")).scalar() == head
         assert conn.execute(text("SELECT name FROM workspace")).scalar() == "Old"
     engine.dispose()

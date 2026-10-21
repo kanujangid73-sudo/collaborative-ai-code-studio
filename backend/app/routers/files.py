@@ -88,7 +88,8 @@ async def delete_file(
 ) -> dict[str, int]:
     workspace = require_access(workspace_id, session, user)
     file = get_file(session, workspace_id, file_id)
-    if user.id != workspace.owner_id and file.created_by not in (None, user.id):
+    # Seeded files (no creator) can only be deleted by the workspace owner.
+    if user.id != workspace.owner_id and file.created_by != user.id:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the file's creator or the workspace owner can delete it")
     store.forget(file.id)
     session.delete(file)

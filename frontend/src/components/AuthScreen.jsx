@@ -39,25 +39,29 @@ function useServerStatus() {
   return status;
 }
 
-export default function AuthScreen({ onSubmit }) {
+export default function AuthScreen({ onSubmit, onDemo }) {
   const server = useServerStatus();
   const [mode, setMode] = useState("login");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(null); // null | "form" | "demo"
 
-  async function submit(e) {
-    e.preventDefault();
-    setBusy(true);
+  async function run(kind, action) {
+    setBusy(kind);
     setError("");
     try {
-      await onSubmit(mode, username.trim(), password);
+      await action();
     } catch (err) {
       setError(err.message);
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
+  }
+
+  function submit(e) {
+    e.preventDefault();
+    run("form", () => onSubmit(mode, username.trim(), password));
   }
 
   const isLogin = mode === "login";
@@ -161,9 +165,18 @@ export default function AuthScreen({ onSubmit }) {
           )}
           {error && <div className="alert" role="alert">{error}</div>}
 
-          <button type="submit" className="button-primary full" disabled={busy}>
-            {busy ? "Please wait…" : isLogin ? "Log in" : "Create account"} <span aria-hidden="true">→</span>
+          <button type="submit" className="button-primary full" disabled={busy !== null}>
+            {busy === "form" ? "Please wait…" : isLogin ? "Log in" : "Create account"} <span aria-hidden="true">→</span>
           </button>
+
+          <div className="auth-divider"><span>or</span></div>
+
+          <button type="button" className="button-ghost full" disabled={busy !== null} onClick={() => run("demo", onDemo)}>
+            {busy === "demo" ? "Setting up your sandbox…" : "Try the demo, no sign-up"}
+          </button>
+          <p className="muted small-text auth-demo-note">
+            Get a temporary account with sample code to run, fix with AI and edit live.
+          </p>
         </form>
       </section>
     </div>

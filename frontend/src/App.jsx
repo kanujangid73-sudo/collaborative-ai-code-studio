@@ -26,14 +26,14 @@ export default function App() {
     return <div className="splash"><span className="brand-mark">{"</>"}</span></div>;
   }
   if (!auth.token || !auth.user) {
-    return <AuthScreen onSubmit={auth.authenticate} />;
+    return <AuthScreen onSubmit={auth.authenticate} onDemo={auth.startDemo} />;
   }
   return <Dashboard {...auth} />;
 }
 
-function Dashboard({ token, user, logout }) {
+function Dashboard({ token, user, landingWorkspaceId, logout }) {
   const [workspaces, setWorkspaces] = useState([]);
-  const [activeId, setActiveId] = useState(null);
+  const [activeId, setActiveId] = useState(landingWorkspaceId);
   const [stats, setStats] = useState(null);
   const [apiStatus, setApiStatus] = useState("checking");
   const [activity, setActivity] = useState([]);
@@ -236,10 +236,22 @@ function Dashboard({ token, user, logout }) {
       />
 
       <main className="main">
+        {user.is_guest && (
+          <div className="guest-banner" role="status">
+            <span>
+              You're exploring with a temporary guest account. It's deleted after 24 hours, so sign up
+              to keep your work.
+            </span>
+            <button type="button" className="button-ghost small" onClick={logout}>
+              Sign up free
+            </button>
+          </div>
+        )}
+
         <header className="page-header" id="overview">
           <div>
             <p className="eyebrow">Dashboard</p>
-            <h1>Welcome back, {user.username}</h1>
+            <h1>{user.is_guest ? "Welcome to the demo" : `Welcome back, ${user.username}`}</h1>
             <p className="subtitle">Your team's collaborative AI coding studio, live.</p>
           </div>
           <div className="header-actions">

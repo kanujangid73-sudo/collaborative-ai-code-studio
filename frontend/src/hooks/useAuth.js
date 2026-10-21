@@ -24,6 +24,8 @@ export function useAuth() {
   const [token, setToken] = useState(readToken);
   const [user, setUser] = useState(null);
   const [checking, setChecking] = useState(Boolean(readToken()));
+  // Workspace to open first after signing in (the sandbox for demo guests).
+  const [landingWorkspaceId, setLandingWorkspaceId] = useState(null);
 
   useEffect(() => {
     if (!token || user) return;
@@ -42,12 +44,24 @@ export function useAuth() {
     };
   }, [token, user]);
 
-  const authenticate = useCallback(async (mode, username, password) => {
-    const data = await api(`/api/auth/${mode}`, { method: "POST", body: { username, password } });
+  const signIn = useCallback((data) => {
     writeToken(data.access_token);
     setToken(data.access_token);
     setUser(data.user);
+    setLandingWorkspaceId(data.workspace_id ?? null);
   }, []);
+
+  const authenticate = useCallback(
+    async (mode, username, password) => {
+      signIn(await api(`/api/auth/${mode}`, { method: "POST", body: { username, password } }));
+    },
+    [signIn],
+  );
+
+  // One-click demo: a temporary guest account with a sample workspace.
+  const startDemo = useCallback(async () => {
+    signIn(await api("/api/auth/demo", { method: "POST" }));
+  }, [signIn]);
 
   const logout = useCallback(() => {
     writeToken(null);
@@ -55,5 +69,5 @@ export function useAuth() {
     setUser(null);
   }, []);
 
-  return { token, user, checking, authenticate, logout };
+  return { token, user, checking, landingWorkspaceId, authenticate, startDemo, logout };
 }

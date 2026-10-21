@@ -69,3 +69,37 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: docker compose build
+
+  # Redeploy on Render after the tests pass on main, only for the parts that changed.
+  # Needs the repository secrets RENDER_DEPLOY_HOOK_API and RENDER_DEPLOY_HOOK_WEB
+  # (each service's Settings → Deploy Hook on Render). See docs/DEPLOY.md.
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [backend, backend-postgres, frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            api:
+              - "backend/**"
+              - "render.yaml"
+            web:
+              - "frontend/**"
+              - "render.yaml"
+      - name: Deploy API
+        if: steps.changes.outputs.api == 'true'
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_API }}
+        run: |
+          if [ -z "$HOOK" ]; then echo "::notice::RENDER_DEPLOY_HOOK_API is not set, skipping"; exit 0; fi
+          curl --fail --silent --show-error -X POST "$HOOK" > /dev/null && echo "API deploy triggered"
+      - name: Deploy frontend
+        if: steps.changes.outputs.web == 'true'
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_WEB }}
+        run: |
+          if [ -z "$HOOK" ]; then echo "::notice::RENDER_DEPLOY_HOOK_WEB is not set, skipping"; exit 0; fi
+          curl --fail --silent --show-error -X POST "$HOOK" > /dev/null && echo "Frontend deploy triggered"
