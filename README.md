@@ -2,6 +2,10 @@
 
 [![CI](https://github.com/kanujangid73-sudo/collaborative-ai-code-studio/actions/workflows/ci.yml/badge.svg)](https://github.com/kanujangid73-sudo/collaborative-ai-code-studio/actions/workflows/ci.yml)
 
+**Live demo: [codetogether-web.onrender.com](https://codetogether-web.onrender.com)** · [API docs](https://codetogether-api-lmtr.onrender.com/docs)
+
+> Hosted on free plans: the first visit after a quiet spell can take up to a minute while the server wakes up.
+
 A full-stack, real-time workspace where developers and an AI pair programmer build code together. Teammates sign in, join shared workspaces, edit code together in a live editor with named cursors, and chat. Claude answers in the same conversation, streaming Markdown and syntax-highlighted code to everyone in the room.
 
 <!-- Add a screenshot: save it as docs/screenshot.png and uncomment the next line. -->
@@ -224,4 +228,4 @@ docker-compose.yml
 - [x] Workspace invites and roles
 - [x] Run code in the browser
 - [x] Production config, Postgres and migrations
-- [ ] Deploy a public demo
+- [x] Deploy a public demo

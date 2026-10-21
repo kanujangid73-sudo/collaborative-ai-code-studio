@@ -346,7 +346,7 @@ function Dashboard({ token, user, logout }) {
         )}
 
         <footer className="page-footer">
-          <span>CodeTogether · React, FastAPI, WebSockets &amp; Claude</span>
+          <span>CodeTogether · React, FastAPI, WebSockets &amp; AI</span>
           <a href={`${API_URL}/docs`} target="_blank" rel="noreferrer">
             OpenAPI documentation ↗
           </a>

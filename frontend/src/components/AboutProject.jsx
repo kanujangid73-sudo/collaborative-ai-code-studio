@@ -23,7 +23,7 @@ const FEATURES = [
   },
   {
     title: "Persistent history",
-    text: "Users, workspaces and messages are stored in SQLite through SQLModel, so nothing is lost on restart.",
+    text: "Users, workspaces, messages and files are stored in PostgreSQL through SQLModel, with Alembic migrations. Local development uses SQLite.",
   },
   {
     title: "Live analytics",
@@ -31,21 +31,21 @@ const FEATURES = [
   },
   {
     title: "Production-ready setup",
-    text: "Pytest and Vitest suites, Docker Compose, and a GitHub Actions pipeline that tests every push.",
+    text: "Pytest and Vitest suites, Docker Compose, a GitHub Actions pipeline that tests every push on SQLite and Postgres, and free hosting on Render and Neon.",
   },
 ];
 
 const STACK = [
   "React 18", "Vite 6", "CodeMirror 6", "Yjs (CRDT)", "Pyodide (WebAssembly)", "Web Workers", "WebSockets", "react-markdown", "Vitest",
-  "Python 3", "FastAPI", "SQLModel", "SQLite", "pycrdt", "JWT", "Claude API", "Gemini API", "Ollama", "Pytest",
-  "Docker", "GitHub Actions",
+  "Python 3", "FastAPI", "SQLModel", "PostgreSQL", "Alembic", "pycrdt", "JWT", "Claude API", "Gemini API", "Ollama", "Pytest",
+  "Docker", "GitHub Actions", "Render", "Neon",
 ];
 
 const FLOW = [
   { title: "React SPA", sub: "Vite · :5173" },
   { title: "REST + WebSocket", sub: "JWT auth" },
   { title: "FastAPI", sub: "Uvicorn · :8000" },
-  { title: "SQLite", sub: "SQLModel ORM" },
+  { title: "PostgreSQL", sub: "SQLModel + Alembic" },
   { title: "Claude / Gemini / Ollama", sub: "streaming AI replies" },
 ];
 
@@ -102,7 +102,7 @@ export default function AboutProject() {
             <li className="done">Shared live code editor</li>
             <li className="done">Workspace invites &amp; roles</li>
             <li className="done">Run code in the browser</li>
-            <li>Public demo deployment</li>
+            <li className="done">Public demo deployment</li>
           </ul>
         </div>
       </div>
