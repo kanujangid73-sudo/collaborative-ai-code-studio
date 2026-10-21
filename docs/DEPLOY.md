@@ -18,7 +18,7 @@ Free hosts give each server a temporary disk that is wiped on every deploy and r
 ## 1. Create the database (Neon)
 
 1. Sign up at https://neon.tech with GitHub or Google.
-2. Create a project, e.g. `codetogether`, in the region closest to your Render region (Render's free services default to Oregon, so pick **US West (Oregon)**).
+2. Create a project in **AWS US East 2 (Ohio)**. `render.yaml` runs the API in Render's Ohio region, so the server and database are close together. If you pick another Neon region, change `region:` in `render.yaml` to the nearest Render region (`oregon`, `ohio`, `virginia`, `frankfurt` or `singapore`).
 3. On the project dashboard, click **Connect** and copy the connection string. It looks like:
    ```
    postgresql://neondb_owner:abc123@ep-cool-name-123456.us-west-2.aws.neon.tech/neondb?sslmode=require
